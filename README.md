@@ -24,14 +24,14 @@
 
 All accounts use zero-copy deserialization (`AccountLoader`) with 64-byte reserved space for future upgrades.
 
-| Account | Layout | Size |
-|---------|--------|------|
-| `ProgramConfig` | admin + fee_recipient + register_fee + _reserved | 144 bytes |
-| `AgentRecord` | authority + pending_buffer + memory + timestamps + agent_id[32] + _reserved | 224 bytes |
-| `AgentBio` | _reserved + [bio_len + bio_bytes...] | 76 + bio_len |
-| `AgentMetadata` | _reserved + [data_len + data_bytes...] | 76 + data_len |
-| `MemoryBuffer` | authority + agent + total/write_offset + _reserved + [data...] | 144 + data_len |
-| `AgentMemory` | agent + _reserved + [memory_bytes...] | 104 + content_len |
+| Account | Fields | Size (disc=8) |
+|---------|--------|---------------|
+| `ProgramConfig` | admin(32) + fee_recipient(32) + register_fee(8) + reserved(64) | 8 + 136 |
+| `AgentRecord` | authority(32) + pending_buffer(32) + memory(32) + timestamps(16) + version(4) + id_len(1) + pad(3) + agent_id(32) + reserved(64) | 8 + 216 |
+| `AgentBio` | reserved(64) + [bio_len(4) + bio_bytes...] | 8 + 64 + 4 + bio_len |
+| `AgentMetadata` | reserved(64) + [data_len(4) + data_bytes...] | 8 + 64 + 4 + data_len |
+| `MemoryBuffer` | authority(32) + agent(32) + total_len(4) + write_offset(4) + reserved(64) + [data...] | 8 + 136 + data_len |
+| `AgentMemory` | agent(32) + reserved(64) + [memory_bytes...] | 8 + 96 + content_len |
 
 ---
 
