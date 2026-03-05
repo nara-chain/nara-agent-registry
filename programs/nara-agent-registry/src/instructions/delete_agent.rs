@@ -8,7 +8,6 @@ use crate::error::AgentRegistryError;
 pub struct DeleteAgent<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    /// AgentRecord PDA — closed by Anchor after the handler returns.
     #[account(
         mut,
         seeds = [b"agent", agent_id.as_bytes()],
@@ -16,9 +15,8 @@ pub struct DeleteAgent<'info> {
         has_one = authority @ AgentRegistryError::Unauthorized,
         close = authority,
     )]
-    pub agent: Account<'info, AgentRecord>,
+    pub agent: AccountLoader<'info, AgentRecord>,
     /// CHECK: AgentBio PDA (seeds = [b"bio", agent]).
-    ///        Closed inside the handler if it has been created.
     #[account(
         mut,
         seeds = [b"bio", agent.key().as_ref()],
@@ -26,43 +24,43 @@ pub struct DeleteAgent<'info> {
     )]
     pub bio: UncheckedAccount<'info>,
     /// CHECK: AgentMetadata PDA (seeds = [b"meta", agent]).
-    ///        Closed inside the handler if it has been created.
     #[account(
         mut,
         seeds = [b"meta", agent.key().as_ref()],
         bump,
     )]
     pub metadata: UncheckedAccount<'info>,
-    /// CHECK: AgentMemory account. Must equal agent.memory when agent has memory.
-    ///        Pass any account (e.g. authority) when agent has no memory.
+    /// CHECK: AgentMemory account.
     #[account(mut)]
     pub memory_account: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
-/// Delete an agent, closing all associated accounts and returning rent to the authority.
-/// Requires no pending buffer — call `close_buffer` first if one exists.
-/// After deletion the agent_id can be re-registered.
 pub fn delete_agent(ctx: Context<DeleteAgent>, _agent_id: String) -> Result<()> {
-    require!(
-        ctx.accounts.agent.pending_buffer.is_none(),
-        AgentRegistryError::HasPendingBuffer
-    );
-
-    // Close AgentMemory if the agent has memory.
-    if ctx.accounts.agent.memory != Pubkey::default() {
-        require_keys_eq!(
-            ctx.accounts.memory_account.key(),
-            ctx.accounts.agent.memory,
-            AgentRegistryError::MemoryMismatch
+    {
+        let agent = ctx.accounts.agent.load()?;
+        require!(
+            agent.pending_buffer == Pubkey::default(),
+            AgentRegistryError::HasPendingBuffer
         );
+
+        if agent.memory != Pubkey::default() {
+            require_keys_eq!(
+                ctx.accounts.memory_account.key(),
+                agent.memory,
+                AgentRegistryError::MemoryMismatch
+            );
+        }
+    }
+
+    // Close AgentMemory if present.
+    if ctx.accounts.agent.load()?.memory != Pubkey::default() {
         close_raw_account(
             &ctx.accounts.memory_account.to_account_info(),
             &ctx.accounts.authority.to_account_info(),
         )?;
     }
 
-    // Close AgentBio if it has been created (lamports > 0).
     if ctx.accounts.bio.lamports() > 0 {
         close_raw_account(
             &ctx.accounts.bio.to_account_info(),
@@ -70,7 +68,6 @@ pub fn delete_agent(ctx: Context<DeleteAgent>, _agent_id: String) -> Result<()> 
         )?;
     }
 
-    // Close AgentMetadata if it has been created (lamports > 0).
     if ctx.accounts.metadata.lamports() > 0 {
         close_raw_account(
             &ctx.accounts.metadata.to_account_info(),
@@ -78,11 +75,9 @@ pub fn delete_agent(ctx: Context<DeleteAgent>, _agent_id: String) -> Result<()> 
         )?;
     }
 
-    // AgentRecord is closed by the `close = authority` constraint after this handler returns.
     Ok(())
 }
 
-/// Drain lamports, zero data, and reassign owner to system program.
 fn close_raw_account(account: &AccountInfo, destination: &AccountInfo) -> Result<()> {
     let lamports = account.lamports();
     **account.try_borrow_mut_lamports()? = 0;

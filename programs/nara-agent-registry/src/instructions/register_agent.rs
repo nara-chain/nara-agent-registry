@@ -11,21 +11,18 @@ pub struct RegisterAgent<'info> {
     #[account(
         init,
         payer = authority,
-        space = AgentRecord::space(agent_id.len()),
+        space = 8 + std::mem::size_of::<AgentRecord>(),
         seeds = [b"agent", agent_id.as_bytes()],
         bump,
     )]
-    pub agent: Account<'info, AgentRecord>,
+    pub agent: AccountLoader<'info, AgentRecord>,
     #[account(
         seeds = [b"config"],
         bump,
     )]
-    pub config: Account<'info, ProgramConfig>,
-    /// CHECK: must equal config.fee_recipient; validated by constraint below.
-    #[account(
-        mut,
-        constraint = fee_recipient.key() == config.fee_recipient @ AgentRegistryError::InvalidFeeRecipient,
-    )]
+    pub config: AccountLoader<'info, ProgramConfig>,
+    /// CHECK: must equal config.fee_recipient; validated in handler.
+    #[account(mut)]
     pub fee_recipient: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
@@ -33,7 +30,15 @@ pub struct RegisterAgent<'info> {
 pub fn register_agent(ctx: Context<RegisterAgent>, agent_id: String) -> Result<()> {
     require!(agent_id.len() >= MIN_AGENT_ID_LEN, AgentRegistryError::AgentIdTooShort);
 
-    let fee = ctx.accounts.config.register_fee;
+    let config = ctx.accounts.config.load()?;
+    let fee = config.register_fee;
+    require_keys_eq!(
+        ctx.accounts.fee_recipient.key(),
+        config.fee_recipient,
+        AgentRegistryError::InvalidFeeRecipient
+    );
+    drop(config);
+
     if fee > 0 && ctx.accounts.fee_recipient.key() != ctx.accounts.authority.key() {
         anchor_lang::system_program::transfer(
             CpiContext::new(
@@ -48,10 +53,11 @@ pub fn register_agent(ctx: Context<RegisterAgent>, agent_id: String) -> Result<(
     }
 
     let now = Clock::get()?.unix_timestamp;
-    let agent = &mut ctx.accounts.agent;
+    let mut agent = ctx.accounts.agent.load_init()?;
     agent.authority = ctx.accounts.authority.key();
-    agent.agent_id = agent_id;
-    agent.pending_buffer = None;
+    agent.agent_id_len = agent_id.len() as u8;
+    agent.agent_id[..agent_id.len()].copy_from_slice(agent_id.as_bytes());
+    agent.pending_buffer = Pubkey::default();
     agent.memory = Pubkey::default();
     agent.version = 0;
     agent.created_at = now;

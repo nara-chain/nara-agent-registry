@@ -9,9 +9,13 @@ import {
 } from "@solana/web3.js";
 import { expect } from "chai";
 
-// ── Constants matching Rust ───────────────────────────────────────────────────
-const MEMORY_BUFFER_HEADER = 80; // 8 disc + 32 authority + 32 agent + 4 total_len + 4 write_offset
-const AGENT_MEMORY_HEADER = 40; // 8 disc + 32 agent
+// ── Constants matching Rust (derived from struct field sizes) ─────────────────
+const DISC = 8;
+const PUBKEY_SIZE = 32;
+const RESERVED = 64;
+const MEMORY_BUFFER_HEADER = DISC + PUBKEY_SIZE + PUBKEY_SIZE + 4 + 4 + RESERVED;
+const AGENT_MEMORY_HEADER = DISC + PUBKEY_SIZE + RESERVED;
+const BIO_META_HEADER = DISC + RESERVED;
 const ONE_SOL = new anchor.BN(1_000_000_000);
 
 describe("nara-agent-registry", () => {
@@ -45,21 +49,27 @@ describe("nara-agent-registry", () => {
       program.programId
     )[0];
 
+  // ── Utility: parse agent_id from zero-copy [u8;32] + u8 len ────────────
+  function parseAgentId(agent: any): string {
+    return Buffer.from(agent.agentId.slice(0, agent.agentIdLen)).toString("utf8");
+  }
+
   // ── Utility: manually deserialize AgentBio / AgentMetadata ──────────────
-  // These are UncheckedAccount in the program, so Anchor doesn't generate
-  // fetch helpers. Layout: 8-byte discriminator + 4-byte string len + bytes.
+  // Layout: [8 disc][64 reserved][4 len][bytes...]
   async function fetchBio(pda: PublicKey): Promise<string> {
     const info = await provider.connection.getAccountInfo(pda);
     if (!info) throw new Error("Bio account not found");
-    const len = info.data.readUInt32LE(8);
-    return info.data.subarray(12, 12 + len).toString("utf8");
+    const len = info.data.readUInt32LE(BIO_META_HEADER);
+    const dataStart = BIO_META_HEADER + 4;
+    return info.data.subarray(dataStart, dataStart + len).toString("utf8");
   }
 
   async function fetchMetadata(pda: PublicKey): Promise<string> {
     const info = await provider.connection.getAccountInfo(pda);
     if (!info) throw new Error("Metadata account not found");
-    const len = info.data.readUInt32LE(8);
-    return info.data.subarray(12, 12 + len).toString("utf8");
+    const len = info.data.readUInt32LE(BIO_META_HEADER);
+    const dataStart = BIO_META_HEADER + 4;
+    return info.data.subarray(dataStart, dataStart + len).toString("utf8");
   }
 
   // ── Utility: create a raw account owned by the program ──────────────────
@@ -224,8 +234,8 @@ describe("nara-agent-registry", () => {
 
       const agent = await program.account.agentRecord.fetch(agentPDA(AGENT_ID));
       expect(agent.authority.toBase58()).to.eq(authority.publicKey.toBase58());
-      expect(agent.agentId).to.eq(AGENT_ID);
-      expect(agent.pendingBuffer).to.be.null;
+      expect(parseAgentId(agent)).to.eq(AGENT_ID);
+      expect(agent.pendingBuffer.equals(PublicKey.default)).to.be.true;
       expect(agent.memory.equals(PublicKey.default)).to.be.true;
       expect(agent.version).to.eq(0);
       expect(agent.createdAt.toNumber()).to.be.greaterThan(0);
@@ -485,7 +495,7 @@ describe("nara-agent-registry", () => {
         .rpc();
 
       let agent = await program.account.agentRecord.fetch(agentKey);
-      expect(agent.pendingBuffer?.toBase58()).to.eq(
+      expect(agent.pendingBuffer.toBase58()).to.eq(
         bufferKp.publicKey.toBase58()
       );
 
@@ -524,7 +534,7 @@ describe("nara-agent-registry", () => {
 
       agent = await program.account.agentRecord.fetch(agentKey);
       expect(agent.memory.toBase58()).to.eq(memoryKp.publicKey.toBase58());
-      expect(agent.pendingBuffer).to.be.null;
+      expect(agent.pendingBuffer.equals(PublicKey.default)).to.be.true;
       expect(agent.version).to.eq(1);
 
       // Memory bytes match.
@@ -711,7 +721,7 @@ describe("nara-agent-registry", () => {
         .rpc();
 
       const agent = await program.account.agentRecord.fetch(agentPDA(AGENT_ID));
-      expect(agent.pendingBuffer).to.be.null;
+      expect(agent.pendingBuffer.equals(PublicKey.default)).to.be.true;
     });
 
     it("allows a fresh upload after close_buffer", async () => {
@@ -727,7 +737,7 @@ describe("nara-agent-registry", () => {
         .rpc();
 
       const agent = await program.account.agentRecord.fetch(agentPDA(AGENT_ID));
-      expect(agent.pendingBuffer?.toBase58()).to.eq(buf2.publicKey.toBase58());
+      expect(agent.pendingBuffer.toBase58()).to.eq(buf2.publicKey.toBase58());
 
       // Cleanup
       await program.methods
@@ -889,7 +899,7 @@ describe("nara-agent-registry", () => {
 
       const agent = await program.account.agentRecord.fetch(agentPDA(AGENT_ID));
       expect(agent.memory.toBase58()).to.eq(memoryV2Kp.publicKey.toBase58());
-      expect(agent.pendingBuffer).to.be.null;
+      expect(agent.pendingBuffer.equals(PublicKey.default)).to.be.true;
       expect(agent.version).to.eq(2);
 
       const info = await provider.connection.getAccountInfo(memoryV2Kp.publicKey);
@@ -1096,7 +1106,7 @@ describe("nara-agent-registry", () => {
       // AgentRecord updated.
       const agent = await program.account.agentRecord.fetch(agentKey);
       expect(agent.memory.toBase58()).to.eq(memoryKp.publicKey.toBase58()); // Same account!
-      expect(agent.pendingBuffer).to.be.null;
+      expect(agent.pendingBuffer.equals(PublicKey.default)).to.be.true;
       expect(agent.version).to.eq(2);
 
       // Memory contains initial + appended bytes.
@@ -1247,7 +1257,7 @@ describe("nara-agent-registry", () => {
       await doRegisterAgent(AGENT_ID);
 
       const agent = await program.account.agentRecord.fetch(agentKey);
-      expect(agent.agentId).to.eq(AGENT_ID);
+      expect(parseAgentId(agent)).to.eq(AGENT_ID);
       expect(agent.version).to.eq(0);
     });
 

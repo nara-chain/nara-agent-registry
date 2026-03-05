@@ -11,10 +11,10 @@ pub struct UpdateAdmin<'info> {
         bump,
         has_one = admin @ AgentRegistryError::Unauthorized,
     )]
-    pub config: Account<'info, ProgramConfig>,
+    pub config: AccountLoader<'info, ProgramConfig>,
 }
 
 pub fn update_admin(ctx: Context<UpdateAdmin>, new_admin: Pubkey) -> Result<()> {
-    ctx.accounts.config.admin = new_admin;
+    ctx.accounts.config.load_mut()?.admin = new_admin;
     Ok(())
 }

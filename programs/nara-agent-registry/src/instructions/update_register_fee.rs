@@ -11,10 +11,10 @@ pub struct UpdateRegisterFee<'info> {
         bump,
         has_one = admin @ AgentRegistryError::Unauthorized,
     )]
-    pub config: Account<'info, ProgramConfig>,
+    pub config: AccountLoader<'info, ProgramConfig>,
 }
 
 pub fn update_register_fee(ctx: Context<UpdateRegisterFee>, new_fee: u64) -> Result<()> {
-    ctx.accounts.config.register_fee = new_fee;
+    ctx.accounts.config.load_mut()?.register_fee = new_fee;
     Ok(())
 }

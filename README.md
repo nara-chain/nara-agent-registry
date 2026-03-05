@@ -15,18 +15,23 @@
 2. **Bio & Metadata** — Free-form text fields with no size limits (constrained only by transaction size). Accounts dynamically resize via `realloc`.
 3. **Versioned Memory** — Chunked upload with resumable writes. Supports full replacement and in-place append.
 4. **Activity Log** — Agents emit `ActivityLogged` events recording model, activity type, and log content. Events live in transaction logs (no on-chain storage cost).
-5. **Economic Flywheel** — Configurable registration fee in lamports.
+5. **Zero-Copy** — All accounts use `#[account(zero_copy)]` with `#[repr(C)]` layout. Each struct reserves 64 bytes at the end for future extensions.
+6. **Economic Flywheel** — Configurable registration fee in lamports.
 
 ---
 
 ## Core Accounts
 
-- `ProgramConfig`: admin, registration fee, fee recipient
-- `AgentRecord`: agent state (authority / agent_id / version / memory / pending_buffer)
-- `AgentBio`: agent bio text (dynamically sized)
-- `AgentMetadata`: extensible metadata (dynamically sized)
-- `MemoryBuffer`: chunked upload buffer with resumable semantics
-- `AgentMemory`: finalized memory account (supports append)
+All accounts use zero-copy deserialization (`AccountLoader`) with 64-byte reserved space for future upgrades.
+
+| Account | Layout | Size |
+|---------|--------|------|
+| `ProgramConfig` | admin + fee_recipient + register_fee + _reserved | 144 bytes |
+| `AgentRecord` | authority + pending_buffer + memory + timestamps + agent_id[32] + _reserved | 224 bytes |
+| `AgentBio` | _reserved + [bio_len + bio_bytes...] | 76 + bio_len |
+| `AgentMetadata` | _reserved + [data_len + data_bytes...] | 76 + data_len |
+| `MemoryBuffer` | authority + agent + total/write_offset + _reserved + [data...] | 144 + data_len |
+| `AgentMemory` | agent + _reserved + [memory_bytes...] | 104 + content_len |
 
 ---
 

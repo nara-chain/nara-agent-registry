@@ -1,18 +1,19 @@
 use anchor_lang::prelude::*;
 
-/// PDA for an agent's custom metadata, seeds = [b"meta", agent_record.key()].
-/// Created lazily on first `set_metadata` call. Dynamically sized —
-/// account is reallocated on each update to fit the new data.
-#[account]
+/// PDA for an agent's metadata, seeds = [b"meta", agent_record.key()].
+/// Zero-copy header followed by dynamic data content.
+/// Layout: [8 disc][64 reserved][4 data_len][data_bytes...]
+#[account(zero_copy)]
+#[repr(C)]
 pub struct AgentMetadata {
-    /// Arbitrary data string (typically JSON), no max length
-    /// (limited only by transaction size).
-    pub data: String,
+    pub _reserved: [u8; 64],
 }
 
 impl AgentMetadata {
-    /// Calculate space needed for a given data length.
+    pub const HEADER_SIZE: usize = 8 + std::mem::size_of::<Self>();
+
+    /// Total space needed: header + 4-byte length prefix + data bytes.
     pub fn space(data_len: usize) -> usize {
-        8 + 4 + data_len // discriminator + String prefix + bytes
+        Self::HEADER_SIZE + 4 + data_len
     }
 }

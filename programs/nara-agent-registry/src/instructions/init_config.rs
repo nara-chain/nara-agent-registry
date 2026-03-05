@@ -9,18 +9,16 @@ pub struct InitConfig<'info> {
     #[account(
         init,
         payer = admin,
-        space = 8 + 32 + 8 + 32, // discriminator + admin + register_fee + fee_recipient
+        space = 8 + std::mem::size_of::<ProgramConfig>(),
         seeds = [b"config"],
         bump,
     )]
-    pub config: Account<'info, ProgramConfig>,
+    pub config: AccountLoader<'info, ProgramConfig>,
     pub system_program: Program<'info, System>,
 }
 
-/// One-time program initialization. The signer becomes the admin.
-/// Sets register_fee = 1 SOL and fee_recipient = admin.
 pub fn init_config(ctx: Context<InitConfig>) -> Result<()> {
-    let config = &mut ctx.accounts.config;
+    let mut config = ctx.accounts.config.load_init()?;
     config.admin = ctx.accounts.admin.key();
     config.register_fee = DEFAULT_REGISTER_FEE;
     config.fee_recipient = ctx.accounts.admin.key();

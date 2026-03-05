@@ -12,18 +12,19 @@ pub struct InitBuffer<'info> {
         bump,
         has_one = authority @ AgentRegistryError::Unauthorized,
     )]
-    pub agent: Account<'info, AgentRecord>,
-    /// Pre-created by the client (owner = this program, data all zeros).
-    /// load_init() writes the discriminator + header fields.
+    pub agent: AccountLoader<'info, AgentRecord>,
     #[account(zero)]
     pub buffer: AccountLoader<'info, MemoryBuffer>,
 }
 
 pub fn init_buffer(ctx: Context<InitBuffer>, _agent_id: String, total_len: u32) -> Result<()> {
-    require!(
-        ctx.accounts.agent.pending_buffer.is_none(),
-        AgentRegistryError::PendingBufferExists
-    );
+    {
+        let agent = ctx.accounts.agent.load()?;
+        require!(
+            agent.pending_buffer == Pubkey::default(),
+            AgentRegistryError::PendingBufferExists
+        );
+    }
     require!(
         ctx.accounts.buffer.to_account_info().data_len()
             == MemoryBuffer::required_size(total_len as usize),
@@ -38,6 +39,6 @@ pub fn init_buffer(ctx: Context<InitBuffer>, _agent_id: String, total_len: u32) 
         buf.write_offset = 0;
     }
 
-    ctx.accounts.agent.pending_buffer = Some(ctx.accounts.buffer.key());
+    ctx.accounts.agent.load_mut()?.pending_buffer = ctx.accounts.buffer.key();
     Ok(())
 }

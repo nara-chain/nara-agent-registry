@@ -13,7 +13,7 @@ pub struct SetMetadata<'info> {
         bump,
         has_one = authority @ AgentRegistryError::Unauthorized,
     )]
-    pub agent: Account<'info, AgentRecord>,
+    pub agent: AccountLoader<'info, AgentRecord>,
     /// CHECK: AgentMetadata PDA — created or resized in the handler.
     #[account(
         mut,
@@ -27,9 +27,10 @@ pub struct SetMetadata<'info> {
 pub fn set_metadata(ctx: Context<SetMetadata>, _agent_id: String, data: String) -> Result<()> {
     let needed = AgentMetadata::space(data.len());
     let info = ctx.accounts.metadata.to_account_info();
+    let len_offset = AgentMetadata::HEADER_SIZE;
+    let data_offset = len_offset + 4;
 
     if info.lamports() == 0 {
-        // First time — create the PDA via CPI.
         let agent_key = ctx.accounts.agent.key();
         let seeds: &[&[u8]] = &[b"meta", agent_key.as_ref()];
         let (_, bump) = Pubkey::find_program_address(seeds, ctx.program_id);
@@ -52,14 +53,12 @@ pub fn set_metadata(ctx: Context<SetMetadata>, _agent_id: String, data: String) 
             ctx.program_id,
         )?;
 
-        // Write discriminator + data.
         let mut account_data = info.try_borrow_mut_data()?;
         account_data[..8].copy_from_slice(&AgentMetadata::DISCRIMINATOR);
         let data_bytes = data.as_bytes();
-        account_data[8..12].copy_from_slice(&(data_bytes.len() as u32).to_le_bytes());
-        account_data[12..12 + data_bytes.len()].copy_from_slice(data_bytes);
+        account_data[len_offset..len_offset + 4].copy_from_slice(&(data_bytes.len() as u32).to_le_bytes());
+        account_data[data_offset..data_offset + data_bytes.len()].copy_from_slice(data_bytes);
     } else {
-        // Account exists — resize if needed.
         let current = info.data_len();
         if current != needed {
             info.resize(needed)?;
@@ -86,11 +85,10 @@ pub fn set_metadata(ctx: Context<SetMetadata>, _agent_id: String, data: String) 
             }
         }
 
-        // Overwrite data content (discriminator stays intact).
         let mut account_data = info.try_borrow_mut_data()?;
         let data_bytes = data.as_bytes();
-        account_data[8..12].copy_from_slice(&(data_bytes.len() as u32).to_le_bytes());
-        account_data[12..12 + data_bytes.len()].copy_from_slice(data_bytes);
+        account_data[len_offset..len_offset + 4].copy_from_slice(&(data_bytes.len() as u32).to_le_bytes());
+        account_data[data_offset..data_offset + data_bytes.len()].copy_from_slice(data_bytes);
     }
 
     Ok(())

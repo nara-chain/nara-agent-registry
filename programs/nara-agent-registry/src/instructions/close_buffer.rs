@@ -13,25 +13,29 @@ pub struct CloseBuffer<'info> {
         bump,
         has_one = authority @ AgentRegistryError::Unauthorized,
     )]
-    pub agent: Account<'info, AgentRecord>,
+    pub agent: AccountLoader<'info, AgentRecord>,
     #[account(
         mut,
-        constraint = Some(buffer.key()) == agent.pending_buffer @ AgentRegistryError::BufferMismatch,
         close = authority,
     )]
     pub buffer: AccountLoader<'info, MemoryBuffer>,
     pub system_program: Program<'info, System>,
 }
 
-/// Discard the active upload buffer without finalizing.
-/// The buffer account is closed (rent returned to authority) and
-/// `agent.pending_buffer` is cleared, allowing a fresh upload to begin.
 pub fn close_buffer(ctx: Context<CloseBuffer>, _agent_id: String) -> Result<()> {
+    {
+        let agent = ctx.accounts.agent.load()?;
+        require_keys_eq!(
+            ctx.accounts.buffer.key(),
+            agent.pending_buffer,
+            AgentRegistryError::BufferMismatch
+        );
+    }
     require_keys_eq!(
         ctx.accounts.buffer.load()?.authority,
         ctx.accounts.authority.key(),
         AgentRegistryError::Unauthorized
     );
-    ctx.accounts.agent.pending_buffer = None;
+    ctx.accounts.agent.load_mut()?.pending_buffer = Pubkey::default();
     Ok(())
 }

@@ -12,43 +12,52 @@ pub struct FinalizeMemoryAppend<'info> {
         seeds = [b"agent", agent_id.as_bytes()],
         bump,
         has_one = authority @ AgentRegistryError::Unauthorized,
-        constraint = agent.memory != Pubkey::default() @ AgentRegistryError::MemoryNotFound,
     )]
-    pub agent: Account<'info, AgentRecord>,
+    pub agent: AccountLoader<'info, AgentRecord>,
     #[account(
         mut,
-        constraint = Some(buffer.key()) == agent.pending_buffer @ AgentRegistryError::BufferMismatch,
         close = authority,
     )]
     pub buffer: AccountLoader<'info, MemoryBuffer>,
-    /// CHECK: existing AgentMemory account to append to. Must equal agent.memory.
-    /// Will be reallocated in-place to hold the additional data.
-    #[account(
-        mut,
-        constraint = memory.key() == agent.memory @ AgentRegistryError::MemoryMismatch,
-    )]
+    /// CHECK: existing AgentMemory account to append to.
+    #[account(mut)]
     pub memory: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
-/// Append buffer data to the end of existing memory, expanding the account via realloc.
-/// No new memory account is created — the existing one grows in place.
 pub fn finalize_memory_append(ctx: Context<FinalizeMemoryAppend>, _agent_id: String) -> Result<()> {
-    let append_len = {
+    let append_len;
+    {
+        let agent = ctx.accounts.agent.load()?;
+        require_keys_eq!(
+            ctx.accounts.buffer.key(),
+            agent.pending_buffer,
+            AgentRegistryError::BufferMismatch
+        );
+        require!(
+            agent.memory != Pubkey::default(),
+            AgentRegistryError::MemoryNotFound
+        );
+        require_keys_eq!(
+            ctx.accounts.memory.key(),
+            agent.memory,
+            AgentRegistryError::MemoryMismatch
+        );
+    }
+
+    {
         let buf = ctx.accounts.buffer.load()?;
         require_keys_eq!(buf.authority, ctx.accounts.authority.key(), AgentRegistryError::Unauthorized);
         require!(buf.write_offset == buf.total_len, AgentRegistryError::BufferIncomplete);
-        buf.total_len as usize
-    };
+        append_len = buf.total_len as usize;
+    }
 
     let memory_info = ctx.accounts.memory.to_account_info();
     let old_total = memory_info.data_len();
     let new_total = old_total + append_len;
 
-    // Realloc memory account to fit appended data.
     memory_info.resize(new_total)?;
 
-    // Pay for additional rent.
     let rent = Rent::get()?;
     let new_min = rent.minimum_balance(new_total);
     let current_lamports = memory_info.lamports();
@@ -66,7 +75,6 @@ pub fn finalize_memory_append(ctx: Context<FinalizeMemoryAppend>, _agent_id: Str
         )?;
     }
 
-    // Copy buffer data to the end of memory.
     {
         let buf_info = ctx.accounts.buffer.to_account_info();
         let buf_data = buf_info.try_borrow_data()?;
@@ -76,8 +84,8 @@ pub fn finalize_memory_append(ctx: Context<FinalizeMemoryAppend>, _agent_id: Str
         mem_data[old_total..new_total].copy_from_slice(slice);
     }
 
-    let agent = &mut ctx.accounts.agent;
-    agent.pending_buffer = None;
+    let mut agent = ctx.accounts.agent.load_mut()?;
+    agent.pending_buffer = Pubkey::default();
     agent.version += 1;
     agent.updated_at = Clock::get()?.unix_timestamp;
     Ok(())

@@ -12,7 +12,7 @@ pub struct TransferAuthority<'info> {
         bump,
         has_one = authority @ AgentRegistryError::Unauthorized,
     )]
-    pub agent: Account<'info, AgentRecord>,
+    pub agent: AccountLoader<'info, AgentRecord>,
 }
 
 pub fn transfer_authority(
@@ -20,10 +20,11 @@ pub fn transfer_authority(
     _agent_id: String,
     new_authority: Pubkey,
 ) -> Result<()> {
+    let mut agent = ctx.accounts.agent.load_mut()?;
     require!(
-        ctx.accounts.agent.pending_buffer.is_none(),
+        agent.pending_buffer == Pubkey::default(),
         AgentRegistryError::HasPendingBuffer
     );
-    ctx.accounts.agent.authority = new_authority;
+    agent.authority = new_authority;
     Ok(())
 }

@@ -21,7 +21,7 @@ pub struct LogActivity<'info> {
         bump,
         has_one = authority @ AgentRegistryError::Unauthorized,
     )]
-    pub agent: Account<'info, AgentRecord>,
+    pub agent: AccountLoader<'info, AgentRecord>,
 }
 
 pub fn log_activity(

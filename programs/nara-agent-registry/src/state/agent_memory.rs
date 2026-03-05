@@ -1,24 +1,20 @@
 use anchor_lang::prelude::*;
 
-/// Client-created account (owner = program) that stores an agent's memory.
-/// Fixed header (40 bytes) followed immediately by raw memory bytes.
-///
-/// For new uploads, the client calls `system_program::create_account` with
-///   `space = AgentMemory::required_size(content_len), owner = program_id`
-/// then passes the account to `finalize_memory_new` / `finalize_memory_update`.
-///
-/// For appends, `finalize_memory_append` reallocates this account in-place
-/// to hold the additional data, without creating a new account.
-#[account]
+/// Client-created account that stores an agent's memory.
+/// Zero-copy header followed by raw memory bytes.
+/// Layout: [8 disc][32 agent][64 reserved][memory_bytes...]
+#[account(zero_copy)]
+#[repr(C)]
 pub struct AgentMemory {
-    /// The AgentRecord PDA this memory belongs to.
     pub agent: Pubkey,
-    // Raw memory bytes follow at offset HEADER_SIZE (not declared as a Vec).
+    pub _reserved: [u8; 64],
 }
 
 impl AgentMemory {
-    /// Discriminator (8) + agent (32).
-    pub const HEADER_SIZE: usize = 8 + 32;
+    pub const DISC_SIZE: usize = 8;
+    pub const AGENT_OFFSET: usize = Self::DISC_SIZE;
+    pub const AGENT_END: usize = Self::AGENT_OFFSET + std::mem::size_of::<Pubkey>();
+    pub const HEADER_SIZE: usize = Self::DISC_SIZE + std::mem::size_of::<Self>();
 
     pub fn required_size(content_len: usize) -> usize {
         Self::HEADER_SIZE + content_len

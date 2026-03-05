@@ -13,16 +13,13 @@ pub struct FinalizeMemoryNew<'info> {
         bump,
         has_one = authority @ AgentRegistryError::Unauthorized,
     )]
-    pub agent: Account<'info, AgentRecord>,
+    pub agent: AccountLoader<'info, AgentRecord>,
     #[account(
         mut,
-        constraint = Some(buffer.key()) == agent.pending_buffer @ AgentRegistryError::BufferMismatch,
         close = authority,
     )]
     pub buffer: AccountLoader<'info, MemoryBuffer>,
-    /// CHECK: pre-created by the client (owner = this program,
-    /// space = AgentMemory::required_size(total_len)).
-    /// This instruction writes the discriminator + header + memory bytes.
+    /// CHECK: pre-created by client (owner = this program).
     #[account(
         mut,
         owner = crate::ID @ AgentRegistryError::InvalidMemoryOwner,
@@ -31,19 +28,28 @@ pub struct FinalizeMemoryNew<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Finalise a buffer upload for an agent that has **no existing memory**.
 pub fn finalize_memory_new(ctx: Context<FinalizeMemoryNew>, _agent_id: String) -> Result<()> {
-    let total_len = {
+    let total_len;
+    {
+        let agent = ctx.accounts.agent.load()?;
+        require_keys_eq!(
+            ctx.accounts.buffer.key(),
+            agent.pending_buffer,
+            AgentRegistryError::BufferMismatch
+        );
+        require!(
+            agent.memory == Pubkey::default(),
+            AgentRegistryError::MemoryAlreadyExists
+        );
+    }
+
+    {
         let buf = ctx.accounts.buffer.load()?;
         require_keys_eq!(buf.authority, ctx.accounts.authority.key(), AgentRegistryError::Unauthorized);
         require!(buf.write_offset == buf.total_len, AgentRegistryError::BufferIncomplete);
-        buf.total_len as usize
-    };
+        total_len = buf.total_len as usize;
+    }
 
-    require!(
-        ctx.accounts.agent.memory == Pubkey::default(),
-        AgentRegistryError::MemoryAlreadyExists
-    );
     require!(
         ctx.accounts.new_memory.data_len() == AgentMemory::required_size(total_len),
         AgentRegistryError::InvalidMemorySize
@@ -57,14 +63,14 @@ pub fn finalize_memory_new(ctx: Context<FinalizeMemoryNew>, _agent_id: String) -
         let slice = &buf_data[MemoryBuffer::HEADER_SIZE..MemoryBuffer::HEADER_SIZE + total_len];
 
         let mut nm = ctx.accounts.new_memory.try_borrow_mut_data()?;
-        nm[..8].copy_from_slice(&AgentMemory::DISCRIMINATOR);
-        nm[8..40].copy_from_slice(agent_key.as_ref());
-        nm[40..40 + total_len].copy_from_slice(slice);
+        nm[..AgentMemory::DISC_SIZE].copy_from_slice(&AgentMemory::DISCRIMINATOR);
+        nm[AgentMemory::AGENT_OFFSET..AgentMemory::AGENT_END].copy_from_slice(agent_key.as_ref());
+        nm[AgentMemory::HEADER_SIZE..AgentMemory::HEADER_SIZE + total_len].copy_from_slice(slice);
     }
 
-    let agent = &mut ctx.accounts.agent;
+    let mut agent = ctx.accounts.agent.load_mut()?;
     agent.memory = ctx.accounts.new_memory.key();
-    agent.pending_buffer = None;
+    agent.pending_buffer = Pubkey::default();
     agent.version = 1;
     agent.updated_at = Clock::get()?.unix_timestamp;
     Ok(())
