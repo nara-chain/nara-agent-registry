@@ -15,7 +15,7 @@ import path from "path";
 // bs58 v4 ships no type declarations; require + cast avoids the hint
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const bs58 = require("bs58") as { decode: (input: string) => Buffer };
-import { NaraAgentRegistry } from "./target/types/nara_agent_registry";
+import { NaraAgentRegistry } from "../target/types/nara_agent_registry";
 
 // ── Config from environment ──────────────────────────────────────────────────
 const CLUSTER = process.env.TEST_RPC_URL ?? "http://127.0.0.1:8899";
