@@ -9,9 +9,9 @@ pub struct AgentRecord {
     pub memory: Pubkey,           // Pubkey::default() = no memory yet
     pub created_at: i64,
     pub updated_at: i64,
+    pub points: u64,
     pub version: u32,
-    pub agent_id_len: u8,
-    pub _padding: [u8; 3],
+    pub agent_id_len: u32,
     pub agent_id: [u8; 32],
     pub _reserved: [u8; 64],
 }

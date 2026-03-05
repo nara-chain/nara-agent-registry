@@ -34,4 +34,10 @@ pub enum AgentRegistryError {
     HasPendingBuffer,
     #[msg("Fee recipient does not match config.fee_recipient")]
     InvalidFeeRecipient,
+    #[msg("Agent ID too long: max 32 bytes")]
+    AgentIdTooLong,
+    #[msg("No valid submit_answer instruction found in transaction")]
+    QuestIxNotFound,
+    #[msg("Referral agent not found")]
+    ReferralNotFound,
 }

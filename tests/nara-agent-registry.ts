@@ -5,6 +5,7 @@ import {
   Keypair,
   PublicKey,
   SystemProgram,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
   Transaction,
 } from "@solana/web3.js";
 import { expect } from "chai";
@@ -1328,18 +1329,22 @@ describe("nara-agent-registry", () => {
   // ── log_activity ──────────────────────────────────────────────────────────
   describe("log_activity", () => {
     const AGENT_ID = "log-agent-01";
+    const REFERRAL_ID = "log-referral-01";
 
     before(async () => {
       await doRegisterAgent(AGENT_ID);
+      await doRegisterAgent(REFERRAL_ID);
     });
 
-    it("emits ActivityLogged event", async () => {
+    it("emits ActivityLogged event with referral (no quest ix → no points)", async () => {
       const agentKey = agentPDA(AGENT_ID);
+      const referralKey = agentPDA(REFERRAL_ID);
       const listener = program.addEventListener("activityLogged", (event) => {
         expect(event.agentId).to.eq(AGENT_ID);
         expect(event.model).to.eq("gpt-4");
         expect(event.activity).to.eq("chat");
         expect(event.log).to.eq("handled user query about weather");
+        expect(event.referralId).to.eq(REFERRAL_ID);
         expect(event.authority.toBase58()).to.eq(authority.publicKey.toBase58());
         expect(event.timestamp.toNumber()).to.be.greaterThan(0);
       });
@@ -1354,12 +1359,36 @@ describe("nara-agent-registry", () => {
         .accountsStrict({
           authority: authority.publicKey,
           agent: agentKey,
+          referralAgent: referralKey,
+          instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .rpc();
 
-      // Give the event listener time to fire
       await new Promise((resolve) => setTimeout(resolve, 2000));
       program.removeEventListener(listener);
+
+      // No quest ix in this tx, so points should remain 0
+      const agent = await program.account.agentRecord.fetch(agentKey);
+      expect(agent.points.toNumber()).to.eq(0);
+      const referral = await program.account.agentRecord.fetch(referralKey);
+      expect(referral.points.toNumber()).to.eq(0);
+    });
+
+    it("works without referral (null referral_agent)", async () => {
+      const agentKey = agentPDA(AGENT_ID);
+
+      await program.methods
+        .logActivity(AGENT_ID, "gpt-4", "chat", "no referral log")
+        .accountsStrict({
+          authority: authority.publicKey,
+          agent: agentKey,
+          referralAgent: null,
+          instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .rpc();
+
+      const agent = await program.account.agentRecord.fetch(agentKey);
+      expect(agent.points.toNumber()).to.eq(0);
     });
 
     it("rejects non-authority signer", async () => {
@@ -1371,6 +1400,8 @@ describe("nara-agent-registry", () => {
           .accountsStrict({
             authority: other.publicKey,
             agent: agentKey,
+            referralAgent: null,
+            instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
           })
           .signers([other])
           .rpc();

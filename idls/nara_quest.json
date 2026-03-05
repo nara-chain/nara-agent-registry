@@ -1,0 +1,655 @@
+{
+  "address": "Quest11111111111111111111111111111111111111",
+  "metadata": {
+    "name": "nara_quest",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "create_question",
+      "discriminator": [
+        222,
+        74,
+        49,
+        30,
+        160,
+        220,
+        179,
+        27
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "question",
+          "type": "string"
+        },
+        {
+          "name": "answer_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "deadline",
+          "type": "i64"
+        },
+        {
+          "name": "reward_amount",
+          "type": "u64"
+        },
+        {
+          "name": "difficulty",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "submit_answer",
+      "discriminator": [
+        221,
+        73,
+        184,
+        157,
+        1,
+        150,
+        231,
+        48
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "winner_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  119,
+                  105,
+                  110,
+                  110,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_a",
+          "type": {
+            "array": [
+              "u8",
+              64
+            ]
+          }
+        },
+        {
+          "name": "proof_b",
+          "type": {
+            "array": [
+              "u8",
+              128
+            ]
+          }
+        },
+        {
+          "name": "proof_c",
+          "type": {
+            "array": [
+              "u8",
+              64
+            ]
+          }
+        },
+        {
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "name": "model",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "transfer_authority",
+      "discriminator": [
+        48,
+        169,
+        76,
+        72,
+        229,
+        180,
+        55,
+        161
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "GameConfig",
+      "discriminator": [
+        45,
+        146,
+        146,
+        33,
+        170,
+        69,
+        96,
+        133
+      ]
+    },
+    {
+      "name": "Pool",
+      "discriminator": [
+        241,
+        154,
+        109,
+        4,
+        17,
+        177,
+        109,
+        188
+      ]
+    },
+    {
+      "name": "WinnerRecord",
+      "discriminator": [
+        248,
+        27,
+        49,
+        33,
+        45,
+        88,
+        210,
+        100
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "AnswerSubmitted",
+      "discriminator": [
+        197,
+        84,
+        24,
+        211,
+        90,
+        196,
+        234,
+        120
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Only the authority can perform this action"
+    },
+    {
+      "code": 6001,
+      "name": "PoolNotActive",
+      "msg": "Pool has no active question"
+    },
+    {
+      "code": 6002,
+      "name": "DeadlineExpired",
+      "msg": "The deadline for this question has passed"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidProof",
+      "msg": "ZK proof verification failed"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidDeadline",
+      "msg": "Deadline must be in the future"
+    },
+    {
+      "code": 6005,
+      "name": "InsufficientReward",
+      "msg": "Reward amount must be greater than zero"
+    },
+    {
+      "code": 6006,
+      "name": "InsufficientPoolBalance",
+      "msg": "Pool balance insufficient for reward transfer"
+    },
+    {
+      "code": 6007,
+      "name": "QuestionTooLong",
+      "msg": "Question exceeds maximum length"
+    },
+    {
+      "code": 6008,
+      "name": "AlreadyAnswered",
+      "msg": "Already answered this round"
+    }
+  ],
+  "types": [
+    {
+      "name": "AnswerSubmitted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "round",
+            "type": "u64"
+          },
+          {
+            "name": "question_id",
+            "type": "u64"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "rewarded",
+            "type": "bool"
+          },
+          {
+            "name": "reward_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "agent",
+            "type": "string"
+          },
+          {
+            "name": "model",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "next_question_id",
+            "type": "u64"
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "round",
+            "type": "u64"
+          },
+          {
+            "name": "question_id",
+            "type": "u64"
+          },
+          {
+            "name": "question",
+            "type": "string"
+          },
+          {
+            "name": "answer_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "reward_amount",
+            "type": "u64"
+          },
+          {
+            "name": "reward_count",
+            "type": "u32"
+          },
+          {
+            "name": "reward_per_winner",
+            "type": "u64"
+          },
+          {
+            "name": "winner_count",
+            "type": "u32"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          },
+          {
+            "name": "difficulty",
+            "type": "u32"
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "WinnerRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "round",
+            "type": "u64"
+          },
+          {
+            "name": "rewarded",
+            "type": "bool"
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

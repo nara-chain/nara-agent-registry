@@ -1,15 +1,17 @@
 use anchor_lang::prelude::*;
 
+// declare_id!("AgentRegistry111111111111111111111111111111");
 declare_id!("8VNuYRUPWyTx2tuKX1Mxq7TZHuA5gbT3LpgGUe9XC3iY");
 
+pub mod constants;
 pub mod error;
 pub mod instructions;
 pub mod state;
 
-use instructions::*;
+declare_program!(nara_quest);
 
-pub const MIN_AGENT_ID_LEN: usize = 5;
-pub const DEFAULT_REGISTER_FEE: u64 = 1_000_000_000; // 1 NARA in lamports
+use constants::*;
+use instructions::*;
 
 #[program]
 pub mod nara_agent_registry {
