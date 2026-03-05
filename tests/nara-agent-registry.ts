@@ -1345,6 +1345,8 @@ describe("nara-agent-registry", () => {
         expect(event.activity).to.eq("chat");
         expect(event.log).to.eq("handled user query about weather");
         expect(event.referralId).to.eq(REFERRAL_ID);
+        expect(event.pointsEarned.toNumber()).to.eq(0);
+        expect(event.referralPointsEarned.toNumber()).to.eq(0);
         expect(event.authority.toBase58()).to.eq(authority.publicKey.toBase58());
         expect(event.timestamp.toNumber()).to.be.greaterThan(0);
       });

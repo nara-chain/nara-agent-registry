@@ -13,6 +13,8 @@ pub struct ActivityLogged {
     pub activity: String,
     pub log: String,
     pub referral_id: String,
+    pub points_earned: u64,
+    pub referral_points_earned: u64,
     pub timestamp: i64,
 }
 
@@ -54,14 +56,19 @@ pub fn log_activity(
         String::new()
     };
 
+    let mut points_earned: u64 = 0;
+    let mut referral_points_earned: u64 = 0;
+
     if has_quest_ix {
         let mut agent = ctx.accounts.agent.load_mut()?;
         agent.points += POINTS_SELF;
+        points_earned = POINTS_SELF;
         drop(agent);
 
         if let Some(ref referral_loader) = ctx.accounts.referral_agent {
             let mut referral_record = referral_loader.load_mut()?;
             referral_record.points += POINTS_REFERRAL;
+            referral_points_earned = POINTS_REFERRAL;
         }
     }
 
@@ -72,6 +79,8 @@ pub fn log_activity(
         activity,
         log,
         referral_id,
+        points_earned,
+        referral_points_earned,
         timestamp: clock.unix_timestamp,
     });
 
