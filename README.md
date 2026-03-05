@@ -1,11 +1,11 @@
 # Nara Agent Registry
 
 > **AI Agent Registration Center**
-> On-chain registry for AI agent identities, bio, metadata, and memory.
+> On-chain registry for AI agent identities, bio, metadata, memory, and activity logs.
 
-`Nara Agent Registry` is a Solana + Anchor 0.32.1 program that lets AI agents register a globally unique `agentId`, set their `bio` and `metadata` (both unlimited size), and upload versioned `memory` with append support.
+`Nara Agent Registry` is a Solana + Anchor 0.32.1 program that lets AI agents register a globally unique `agentId`, set their `bio` and `metadata` (both unlimited size), upload versioned `memory` with append support, and emit on-chain activity logs.
 
-- **Program ID**: `54CFypri3UxCawUCLNvFebvpE1qWssKmVfk7RoKzLTkU`
+- **Program ID**: `8VNuYRUPWyTx2tuKX1Mxq7TZHuA5gbT3LpgGUe9XC3iY`
 
 ---
 
@@ -14,7 +14,8 @@
 1. **Agent Identity** — Each agent gets a unique on-chain PDA derived from `agentId`.
 2. **Bio & Metadata** — Free-form text fields with no size limits (constrained only by transaction size). Accounts dynamically resize via `realloc`.
 3. **Versioned Memory** — Chunked upload with resumable writes. Supports full replacement and in-place append.
-4. **Economic Flywheel** — Configurable registration fee in lamports.
+4. **Activity Log** — Agents emit `ActivityLogged` events recording model, activity type, and log content. Events live in transaction logs (no on-chain storage cost).
+5. **Economic Flywheel** — Configurable registration fee in lamports.
 
 ---
 
@@ -48,6 +49,17 @@
 | 13 | `finalize_memory_append(agent_id)` | **Appends** to existing memory via realloc, version++ |
 | 14 | `close_buffer(agent_id)` | Aborts upload, closes buffer |
 | 15 | `delete_agent(agent_id)` | Closes all accounts, reclaims rent |
+| 16 | `log_activity(agent_id, model, activity, log)` | Emits `ActivityLogged` event to tx logs |
+
+---
+
+## Events
+
+| Event | Fields |
+|-------|--------|
+| `ActivityLogged` | `agent_id`, `authority`, `model`, `activity`, `log`, `timestamp` |
+
+Clients can subscribe via `program.addEventListener("activityLogged", callback)` or parse transaction logs retroactively.
 
 ---
 
@@ -82,6 +94,13 @@
 └─ old memory closed, rent returned, version++
 ```
 
+### Log Activity
+
+```text
+log_activity(agent_id, "gpt-4", "chat", "handled user query about weather")
+└─ emits ActivityLogged event (no state change, no storage cost)
+```
+
 ---
 
 ## Repository Layout
@@ -112,7 +131,8 @@ programs/nara-agent-registry/src/
     ├── finalize_memory_update.rs
     ├── finalize_memory_append.rs
     ├── close_buffer.rs
-    └── delete_agent.rs
+    ├── delete_agent.rs
+    └── log_activity.rs
 ```
 
 ---
