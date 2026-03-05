@@ -36,6 +36,8 @@ pub enum AgentRegistryError {
     InvalidFeeRecipient,
     #[msg("Agent ID too long: max 32 bytes")]
     AgentIdTooLong,
+    #[msg("Agent ID must be lowercase")]
+    AgentIdNotLowercase,
     #[msg("No valid submit_answer instruction found in transaction")]
     QuestIxNotFound,
     #[msg("Referral agent not found")]

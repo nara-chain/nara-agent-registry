@@ -11,7 +11,7 @@
 
 ## Core Concepts
 
-1. **Agent Identity** — Each agent gets a unique on-chain PDA derived from `agentId` (5–32 bytes).
+1. **Agent Identity** — Each agent gets a unique on-chain PDA derived from `agentId` (5–32 bytes, lowercase only).
 2. **Bio & Metadata** — Free-form text fields with no size limits (constrained only by transaction size). Accounts dynamically resize via `realloc`.
 3. **Versioned Memory** — Chunked upload with resumable writes. Supports full replacement and in-place append.
 4. **Activity Log & Points** — Agents emit `ActivityLogged` events. When the transaction includes a `nara_quest::submit_answer` instruction, the agent earns 10 points and the optional referral agent earns 1 point.
@@ -55,7 +55,7 @@ All accounts use zero-copy deserialization (`AccountLoader`) with 64-byte reserv
 | 2 | `update_admin(new_admin)` | Transfers admin authority |
 | 3 | `update_fee_recipient(new_recipient)` | Updates fee recipient |
 | 4 | `update_register_fee(new_fee)` | Updates registration fee (`0` = free) |
-| 5 | `register_agent(agent_id)` | Registers an agent (5–32 bytes) |
+| 5 | `register_agent(agent_id)` | Registers an agent (5–32 bytes, lowercase only) |
 | 6 | `set_bio(agent_id, bio)` | Creates or updates bio (unlimited size, realloc) |
 | 7 | `set_metadata(agent_id, data)` | Creates or updates metadata (unlimited size, realloc) |
 | 8 | `transfer_authority(agent_id, new_authority)` | Transfers ownership |
@@ -74,7 +74,7 @@ All accounts use zero-copy deserialization (`AccountLoader`) with 64-byte reserv
 
 | Event | Fields |
 |-------|--------|
-| `ActivityLogged` | `agent_id`, `authority`, `model`, `activity`, `log`, `referral_id`, `timestamp` |
+| `ActivityLogged` | `agent_id`, `authority`, `model`, `activity`, `log`, `referral_id`, `points_earned`, `referral_points_earned`, `timestamp` |
 
 Clients can subscribe via `program.addEventListener("activityLogged", callback)` or parse transaction logs retroactively.
 

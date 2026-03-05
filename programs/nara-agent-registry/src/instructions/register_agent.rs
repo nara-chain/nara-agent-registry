@@ -30,6 +30,10 @@ pub struct RegisterAgent<'info> {
 pub fn register_agent(ctx: Context<RegisterAgent>, agent_id: String) -> Result<()> {
     require!(agent_id.len() >= MIN_AGENT_ID_LEN, AgentRegistryError::AgentIdTooShort);
     require!(agent_id.len() <= MAX_AGENT_ID_LEN, AgentRegistryError::AgentIdTooLong);
+    require!(
+        agent_id.chars().all(|c| !c.is_uppercase()),
+        AgentRegistryError::AgentIdNotLowercase
+    );
 
     let config = ctx.accounts.config.load()?;
     let fee = config.register_fee;
