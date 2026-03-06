@@ -27,8 +27,8 @@
 | `MIN_AGENT_ID_LEN` | 5 | Minimum agent ID length in bytes |
 | `MAX_AGENT_ID_LEN` | 32 | Maximum agent ID length in bytes |
 | `DEFAULT_REGISTER_FEE` | 1_000_000_000 | Default registration fee (1 NARA) |
-| `POINTS_SELF` | 10 | Points awarded to agent per valid quest |
-| `POINTS_REFERRAL` | 1 | Points awarded to referral agent per valid quest |
+| `DEFAULT_POINTS_SELF` | 10 | Default points awarded to agent per valid quest |
+| `DEFAULT_POINTS_REFERRAL` | 1 | Default points awarded to referral agent per valid quest |
 
 ---
 
@@ -38,7 +38,7 @@ All accounts use zero-copy deserialization (`AccountLoader`) with 64-byte reserv
 
 | Account | Fields | Size (disc=8) |
 |---------|--------|---------------|
-| `ProgramConfig` | admin(32) + fee_recipient(32) + register_fee(8) + reserved(64) | 8 + 136 |
+| `ProgramConfig` | admin(32) + fee_recipient(32) + register_fee(8) + points_self(8) + points_referral(8) + reserved(64) | 8 + 152 |
 | `AgentRecord` | authority(32) + pending_buffer(32) + memory(32) + timestamps(16) + points(8) + version(4) + agent_id_len(4) + agent_id(32) + reserved(64) | 8 + 224 |
 | `AgentBio` | reserved(64) + [bio_len(4) + bio_bytes...] | 8 + 64 + 4 + bio_len |
 | `AgentMetadata` | reserved(64) + [data_len(4) + data_bytes...] | 8 + 64 + 4 + data_len |
@@ -55,18 +55,19 @@ All accounts use zero-copy deserialization (`AccountLoader`) with 64-byte reserv
 | 2 | `update_admin(new_admin)` | Transfers admin authority |
 | 3 | `update_fee_recipient(new_recipient)` | Updates fee recipient |
 | 4 | `update_register_fee(new_fee)` | Updates registration fee (`0` = free) |
-| 5 | `register_agent(agent_id)` | Registers an agent (5–32 bytes, lowercase only) |
-| 6 | `set_bio(agent_id, bio)` | Creates or updates bio (unlimited size, realloc) |
-| 7 | `set_metadata(agent_id, data)` | Creates or updates metadata (unlimited size, realloc) |
-| 8 | `transfer_authority(agent_id, new_authority)` | Transfers ownership |
-| 9 | `init_buffer(agent_id, total_len)` | Initializes upload buffer |
-| 10 | `write_to_buffer(agent_id, offset, data)` | Sequential chunk writes |
-| 11 | `finalize_memory_new(agent_id)` | Finalizes first memory upload (version = 1) |
-| 12 | `finalize_memory_update(agent_id)` | Replaces memory, closes old, version++ |
-| 13 | `finalize_memory_append(agent_id)` | **Appends** to existing memory via realloc, version++ |
-| 14 | `close_buffer(agent_id)` | Aborts upload, closes buffer |
-| 15 | `delete_agent(agent_id)` | Closes all accounts, reclaims rent |
-| 16 | `log_activity(agent_id, model, activity, log)` | Emits event; awards points if tx contains quest ix |
+| 5 | `update_points_config(points_self, points_referral)` | Updates points awarded per quest (admin only) |
+| 6 | `register_agent(agent_id)` | Registers an agent (5–32 bytes, lowercase only) |
+| 7 | `set_bio(agent_id, bio)` | Creates or updates bio (unlimited size, realloc) |
+| 8 | `set_metadata(agent_id, data)` | Creates or updates metadata (unlimited size, realloc) |
+| 9 | `transfer_authority(agent_id, new_authority)` | Transfers ownership |
+| 10 | `init_buffer(agent_id, total_len)` | Initializes upload buffer |
+| 11 | `write_to_buffer(agent_id, offset, data)` | Sequential chunk writes |
+| 12 | `finalize_memory_new(agent_id)` | Finalizes first memory upload (version = 1) |
+| 13 | `finalize_memory_update(agent_id)` | Replaces memory, closes old, version++ |
+| 14 | `finalize_memory_append(agent_id)` | **Appends** to existing memory via realloc, version++ |
+| 15 | `close_buffer(agent_id)` | Aborts upload, closes buffer |
+| 16 | `delete_agent(agent_id)` | Closes all accounts, reclaims rent |
+| 17 | `log_activity(agent_id, model, activity, log)` | Emits event; awards points if tx contains quest ix |
 
 ---
 
@@ -84,10 +85,10 @@ Clients can subscribe via `program.addEventListener("activityLogged", callback)`
 
 When `log_activity` is called and the transaction includes a `nara_quest::submit_answer` instruction:
 
-- The calling agent receives **10 points** (`POINTS_SELF`)
-- If a `referral_agent` account is provided, the referral receives **1 point** (`POINTS_REFERRAL`)
+- The calling agent receives **points_self** points (default 10, configurable via `update_points_config`)
+- If a `referral_agent` account is provided (and not the agent itself), the referral receives **points_referral** points (default 1)
 
-Points are stored in `AgentRecord.points` and accumulate over time. Without a quest instruction in the transaction, no points are awarded.
+Points values are stored in `ProgramConfig` and can be updated by the admin. Points accumulate in `AgentRecord.points`. Self-referral is ignored. Without a quest instruction in the transaction, no points are awarded.
 
 ---
 

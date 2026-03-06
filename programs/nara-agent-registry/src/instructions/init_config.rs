@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use crate::state::ProgramConfig;
-use crate::DEFAULT_REGISTER_FEE;
+use crate::constants::{DEFAULT_REGISTER_FEE, DEFAULT_POINTS_SELF, DEFAULT_POINTS_REFERRAL};
 
 #[derive(Accounts)]
 pub struct InitConfig<'info> {
@@ -22,5 +22,7 @@ pub fn init_config(ctx: Context<InitConfig>) -> Result<()> {
     config.admin = ctx.accounts.admin.key();
     config.register_fee = DEFAULT_REGISTER_FEE;
     config.fee_recipient = ctx.accounts.admin.key();
+    config.points_self = DEFAULT_POINTS_SELF;
+    config.points_referral = DEFAULT_POINTS_REFERRAL;
     Ok(())
 }

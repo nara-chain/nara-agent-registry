@@ -10,7 +10,6 @@ pub mod state;
 
 declare_program!(nara_quest);
 
-use constants::*;
 use instructions::*;
 
 #[program]
@@ -31,6 +30,10 @@ pub mod nara_agent_registry {
 
     pub fn update_register_fee(ctx: Context<UpdateRegisterFee>, new_fee: u64) -> Result<()> {
         instructions::update_register_fee::update_register_fee(ctx, new_fee)
+    }
+
+    pub fn update_points_config(ctx: Context<UpdatePointsConfig>, points_self: u64, points_referral: u64) -> Result<()> {
+        instructions::update_points_config::update_points_config(ctx, points_self, points_referral)
     }
 
     pub fn register_agent(ctx: Context<RegisterAgent>, agent_id: String) -> Result<()> {

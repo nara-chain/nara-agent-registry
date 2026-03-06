@@ -1,8 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::sysvar::instructions as ix_sysvar;
-use crate::state::AgentRecord;
+use crate::state::{AgentRecord, ProgramConfig};
 use crate::error::AgentRegistryError;
-use crate::constants::{POINTS_SELF, POINTS_REFERRAL};
 use crate::nara_quest;
 
 #[event]
@@ -30,6 +29,8 @@ pub struct LogActivity<'info> {
         has_one = authority @ AgentRegistryError::Unauthorized,
     )]
     pub agent: AccountLoader<'info, AgentRecord>,
+    #[account(seeds = [b"config"], bump)]
+    pub config: AccountLoader<'info, ProgramConfig>,
     /// Optional referral agent PDA. Pass null if no referral.
     #[account(mut)]
     pub referral_agent: Option<AccountLoader<'info, AgentRecord>>,
@@ -68,16 +69,21 @@ pub fn log_activity(
     let mut referral_points_earned: u64 = 0;
 
     if has_quest_ix {
+        let config = ctx.accounts.config.load()?;
+        let ps = config.points_self;
+        let pr = config.points_referral;
+        drop(config);
+
         let mut agent = ctx.accounts.agent.load_mut()?;
-        agent.points += POINTS_SELF;
-        points_earned = POINTS_SELF;
+        agent.points += ps;
+        points_earned = ps;
         drop(agent);
 
         if !self_referral {
             if let Some(ref referral_loader) = ctx.accounts.referral_agent {
                 let mut referral_record = referral_loader.load_mut()?;
-                referral_record.points += POINTS_REFERRAL;
-                referral_points_earned = POINTS_REFERRAL;
+                referral_record.points += pr;
+                referral_points_earned = pr;
             }
         }
     }

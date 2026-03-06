@@ -1361,6 +1361,7 @@ describe("nara-agent-registry", () => {
         .accountsStrict({
           authority: authority.publicKey,
           agent: agentKey,
+          config: configPDA(),
           referralAgent: referralKey,
           instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
@@ -1384,6 +1385,7 @@ describe("nara-agent-registry", () => {
         .accountsStrict({
           authority: authority.publicKey,
           agent: agentKey,
+          config: configPDA(),
           referralAgent: null,
           instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
@@ -1402,6 +1404,7 @@ describe("nara-agent-registry", () => {
           .accountsStrict({
             authority: other.publicKey,
             agent: agentKey,
+            config: configPDA(),
             referralAgent: null,
             instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
           })
