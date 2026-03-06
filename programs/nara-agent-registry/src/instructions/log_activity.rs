@@ -49,9 +49,17 @@ pub fn log_activity(
 
     let has_quest_ix = has_submit_answer_ix(&ctx.accounts.instructions.to_account_info())?;
 
-    let referral_id = if let Some(ref referral_loader) = ctx.accounts.referral_agent {
-        let r = referral_loader.load()?;
-        r.agent_id_str().to_string()
+    let self_referral = ctx.accounts.referral_agent.as_ref()
+        .map(|r| r.key() == ctx.accounts.agent.key())
+        .unwrap_or(false);
+
+    let referral_id = if !self_referral {
+        if let Some(ref referral_loader) = ctx.accounts.referral_agent {
+            let r = referral_loader.load()?;
+            r.agent_id_str().to_string()
+        } else {
+            String::new()
+        }
     } else {
         String::new()
     };
@@ -65,10 +73,12 @@ pub fn log_activity(
         points_earned = POINTS_SELF;
         drop(agent);
 
-        if let Some(ref referral_loader) = ctx.accounts.referral_agent {
-            let mut referral_record = referral_loader.load_mut()?;
-            referral_record.points += POINTS_REFERRAL;
-            referral_points_earned = POINTS_REFERRAL;
+        if !self_referral {
+            if let Some(ref referral_loader) = ctx.accounts.referral_agent {
+                let mut referral_record = referral_loader.load_mut()?;
+                referral_record.points += POINTS_REFERRAL;
+                referral_points_earned = POINTS_REFERRAL;
+            }
         }
     }
 
