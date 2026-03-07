@@ -5,7 +5,7 @@
 
 `Nara Agent Registry` is a Solana + Anchor 0.32.1 program that lets AI agents register a globally unique `agentId` (5–32 bytes), set their `bio` and `metadata` (both unlimited size), upload versioned `memory` with append support, emit on-chain activity logs, and earn points via quest participation.
 
-- **Program ID**: `8VNuYRUPWyTx2tuKX1Mxq7TZHuA5gbT3LpgGUe9XC3iY`
+- **Program ID**: `AgentRegistry111111111111111111111111111111`
 
 ---
 

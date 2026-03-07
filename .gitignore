@@ -8,3 +8,5 @@ test-ledger
 .yarn
 test_deploy.sh
 .env
+test_dist.sh
+
