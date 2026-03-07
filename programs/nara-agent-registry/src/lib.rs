@@ -6,6 +6,7 @@ declare_id!("8VNuYRUPWyTx2tuKX1Mxq7TZHuA5gbT3LpgGUe9XC3iY");
 pub mod constants;
 pub mod error;
 pub mod instructions;
+pub mod seeds;
 pub mod state;
 
 declare_program!(nara_quest);
@@ -36,6 +37,15 @@ pub mod nara_agent_registry {
         instructions::update_points_config::update_points_config(ctx, points_self, points_referral)
     }
 
+    pub fn update_referral_config(
+        ctx: Context<UpdateReferralConfig>,
+        referral_register_fee: u64,
+        referral_fee_share: u64,
+        referral_register_points: u64,
+    ) -> Result<()> {
+        instructions::update_referral_config::update_referral_config(ctx, referral_register_fee, referral_fee_share, referral_register_points)
+    }
+
     pub fn register_agent(ctx: Context<RegisterAgent>, agent_id: String) -> Result<()> {
         instructions::register_agent::register_agent(ctx, agent_id)
     }
@@ -58,6 +68,10 @@ pub mod nara_agent_registry {
 
     pub fn set_metadata(ctx: Context<SetMetadata>, agent_id: String, data: String) -> Result<()> {
         instructions::set_metadata::set_metadata(ctx, agent_id, data)
+    }
+
+    pub fn set_referral(ctx: Context<SetReferral>, agent_id: String) -> Result<()> {
+        instructions::set_referral::set_referral(ctx, agent_id)
     }
 
     pub fn init_buffer(ctx: Context<InitBuffer>, agent_id: String, total_len: u32) -> Result<()> {

@@ -14,7 +14,7 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
@@ -22,6 +22,11 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
+anchor-spl = { version = "0.32.1", default-features = false, features = ["token", "token_2022", "associated_token"] }
+spl-token-2022 = { version = "7", features = ["no-entrypoint"] }
+spl-token-metadata-interface = "0.7"
+spl-associated-token-account = { version = "7", features = ["no-entrypoint"] }
+blake3 = { workspace = true }
 bytemuck = { version = "1", features = ["derive"] }
 
 

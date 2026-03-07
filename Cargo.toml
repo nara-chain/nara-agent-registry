@@ -4,6 +4,9 @@ members = [
 ]
 resolver = "2"
 
+[workspace.dependencies]
+blake3 = "=1.6.1"
+
 [profile.release]
 overflow-checks = true
 lto = "fat"

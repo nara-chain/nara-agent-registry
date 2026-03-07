@@ -459,8 +459,8 @@
     },
     {
       "code": 6001,
-      "name": "PoolNotActive",
-      "msg": "Pool has no active question"
+      "name": "NoActiveQuest",
+      "msg": "No active quest"
     },
     {
       "code": 6002,
@@ -484,16 +484,11 @@
     },
     {
       "code": 6006,
-      "name": "InsufficientPoolBalance",
-      "msg": "Pool balance insufficient for reward transfer"
-    },
-    {
-      "code": 6007,
       "name": "QuestionTooLong",
       "msg": "Question exceeds maximum length"
     },
     {
-      "code": 6008,
+      "code": 6007,
       "name": "AlreadyAnswered",
       "msg": "Already answered this round"
     }
@@ -506,10 +501,6 @@
         "fields": [
           {
             "name": "round",
-            "type": "u64"
-          },
-          {
-            "name": "question_id",
             "type": "u64"
           },
           {
@@ -545,10 +536,6 @@
             "type": "pubkey"
           },
           {
-            "name": "next_question_id",
-            "type": "u64"
-          },
-          {
             "name": "_padding",
             "type": {
               "array": [
@@ -567,10 +554,6 @@
         "fields": [
           {
             "name": "round",
-            "type": "u64"
-          },
-          {
-            "name": "question_id",
             "type": "u64"
           },
           {
@@ -607,10 +590,6 @@
             "type": "u32"
           },
           {
-            "name": "is_active",
-            "type": "bool"
-          },
-          {
             "name": "difficulty",
             "type": "u32"
           },
@@ -634,10 +613,6 @@
           {
             "name": "round",
             "type": "u64"
-          },
-          {
-            "name": "rewarded",
-            "type": "bool"
           },
           {
             "name": "_padding",

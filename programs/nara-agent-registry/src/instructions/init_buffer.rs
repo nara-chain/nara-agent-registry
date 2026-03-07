@@ -1,18 +1,18 @@
 use anchor_lang::prelude::*;
-use crate::state::{AgentRecord, MemoryBuffer};
+use crate::state::{AgentState, MemoryBuffer};
 use crate::error::AgentRegistryError;
-
+use crate::seeds::*;
 #[derive(Accounts)]
 #[instruction(agent_id: String)]
 pub struct InitBuffer<'info> {
     pub authority: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"agent", agent_id.as_bytes()],
+        seeds = [SEED_AGENT, agent_id.as_bytes()],
         bump,
         has_one = authority @ AgentRegistryError::Unauthorized,
     )]
-    pub agent: AccountLoader<'info, AgentRecord>,
+    pub agent: AccountLoader<'info, AgentState>,
     #[account(zero)]
     pub buffer: AccountLoader<'info, MemoryBuffer>,
 }

@@ -42,4 +42,22 @@ pub enum AgentRegistryError {
     QuestIxNotFound,
     #[msg("Referral agent not found")]
     ReferralNotFound,
+    #[msg("Referral authority does not match referral agent's authority")]
+    InvalidReferralAuthority,
+    #[msg("Memory account is already initialized")]
+    MemoryAlreadyInitialized,
+    #[msg("referral_fee_share must not exceed referral_register_fee")]
+    InvalidReferralFeeConfig,
+    #[msg("referral_point_account is not the correct ATA")]
+    InvalidReferralPointAccount,
+    #[msg("log_activity cannot be called via CPI")]
+    CpiNotAllowed,
+    #[msg("Only one log_activity allowed per transaction")]
+    DuplicateLogActivity,
+    #[msg("Quest user does not match log_activity authority")]
+    QuestUserMismatch,
+    #[msg("Referral is already set and cannot be changed")]
+    ReferralAlreadySet,
+    #[msg("Cannot set self as referral")]
+    SelfReferral,
 }

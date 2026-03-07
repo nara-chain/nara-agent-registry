@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-/// PDA for an agent's bio, seeds = [b"bio", agent_record.key()].
+/// PDA for an agent's bio, seeds = [SEED_BIO, agent_record.key()].
 /// Zero-copy header followed by dynamic bio content.
 /// Layout: [8 disc][64 reserved][4 bio_len][bio_bytes...]
 #[account(zero_copy)]

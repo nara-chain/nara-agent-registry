@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
-use crate::state::{AgentRecord, MemoryBuffer, AgentMemory};
+use crate::state::{AgentState, MemoryBuffer, AgentMemory};
 use crate::error::AgentRegistryError;
+use crate::seeds::*;
 
 #[derive(Accounts)]
 #[instruction(agent_id: String)]
@@ -9,11 +10,11 @@ pub struct FinalizeMemoryNew<'info> {
     pub authority: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"agent", agent_id.as_bytes()],
+        seeds = [SEED_AGENT, agent_id.as_bytes()],
         bump,
         has_one = authority @ AgentRegistryError::Unauthorized,
     )]
-    pub agent: AccountLoader<'info, AgentRecord>,
+    pub agent: AccountLoader<'info, AgentState>,
     #[account(
         mut,
         close = authority,
@@ -25,7 +26,6 @@ pub struct FinalizeMemoryNew<'info> {
         owner = crate::ID @ AgentRegistryError::InvalidMemoryOwner,
     )]
     pub new_memory: UncheckedAccount<'info>,
-    pub system_program: Program<'info, System>,
 }
 
 pub fn finalize_memory_new(ctx: Context<FinalizeMemoryNew>, _agent_id: String) -> Result<()> {
@@ -54,6 +54,15 @@ pub fn finalize_memory_new(ctx: Context<FinalizeMemoryNew>, _agent_id: String) -
         ctx.accounts.new_memory.data_len() == AgentMemory::required_size(total_len),
         AgentRegistryError::InvalidMemorySize
     );
+
+    // Verify new_memory is uninitialized (first 8 bytes must be zero)
+    {
+        let nm_data = ctx.accounts.new_memory.try_borrow_data()?;
+        require!(
+            nm_data[..AgentMemory::DISC_SIZE].iter().all(|&b| b == 0),
+            AgentRegistryError::MemoryAlreadyInitialized
+        );
+    }
 
     let agent_key = ctx.accounts.agent.key();
 

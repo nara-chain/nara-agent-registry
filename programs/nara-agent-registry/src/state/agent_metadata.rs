@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-/// PDA for an agent's metadata, seeds = [b"meta", agent_record.key()].
+/// PDA for an agent's metadata, seeds = [SEED_META, agent_record.key()].
 /// Zero-copy header followed by dynamic data content.
 /// Layout: [8 disc][64 reserved][4 data_len][data_bytes...]
 #[account(zero_copy)]

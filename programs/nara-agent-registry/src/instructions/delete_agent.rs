@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::system_program as sol_system;
-use crate::state::AgentRecord;
+use crate::state::AgentState;
 use crate::error::AgentRegistryError;
+use crate::seeds::*;
+use super::helpers::close_raw_account;
 
 #[derive(Accounts)]
 #[instruction(agent_id: String)]
@@ -10,30 +11,29 @@ pub struct DeleteAgent<'info> {
     pub authority: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"agent", agent_id.as_bytes()],
+        seeds = [SEED_AGENT, agent_id.as_bytes()],
         bump,
         has_one = authority @ AgentRegistryError::Unauthorized,
         close = authority,
     )]
-    pub agent: AccountLoader<'info, AgentRecord>,
-    /// CHECK: AgentBio PDA (seeds = [b"bio", agent]).
+    pub agent: AccountLoader<'info, AgentState>,
+    /// CHECK: AgentBio PDA (seeds = [SEED_BIO, agent]).
     #[account(
         mut,
-        seeds = [b"bio", agent.key().as_ref()],
+        seeds = [SEED_BIO, agent.key().as_ref()],
         bump,
     )]
     pub bio: UncheckedAccount<'info>,
-    /// CHECK: AgentMetadata PDA (seeds = [b"meta", agent]).
+    /// CHECK: AgentMetadata PDA (seeds = [SEED_META, agent]).
     #[account(
         mut,
-        seeds = [b"meta", agent.key().as_ref()],
+        seeds = [SEED_META, agent.key().as_ref()],
         bump,
     )]
     pub metadata: UncheckedAccount<'info>,
     /// CHECK: AgentMemory account.
     #[account(mut)]
     pub memory_account: UncheckedAccount<'info>,
-    pub system_program: Program<'info, System>,
 }
 
 pub fn delete_agent(ctx: Context<DeleteAgent>, _agent_id: String) -> Result<()> {
@@ -75,14 +75,5 @@ pub fn delete_agent(ctx: Context<DeleteAgent>, _agent_id: String) -> Result<()> 
         )?;
     }
 
-    Ok(())
-}
-
-fn close_raw_account(account: &AccountInfo, destination: &AccountInfo) -> Result<()> {
-    let lamports = account.lamports();
-    **account.try_borrow_mut_lamports()? = 0;
-    **destination.try_borrow_mut_lamports()? += lamports;
-    account.assign(&sol_system::ID);
-    account.try_borrow_mut_data()?.fill(0);
     Ok(())
 }

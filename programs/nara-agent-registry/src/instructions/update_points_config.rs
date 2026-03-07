@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
 use crate::state::ProgramConfig;
 use crate::error::AgentRegistryError;
-
+use crate::seeds::*;
 #[derive(Accounts)]
 pub struct UpdatePointsConfig<'info> {
     pub admin: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"config"],
+        seeds = [SEED_CONFIG],
         bump,
         has_one = admin @ AgentRegistryError::Unauthorized,
     )]
