@@ -16,5 +16,7 @@ pub struct ProgramConfig {
     pub referral_register_fee: u64,
     pub referral_fee_share: u64,
     pub referral_register_points: u64,
+    pub activity_reward: u64,
+    pub referral_activity_reward: u64,
     pub _reserved: [u8; 64],
 }

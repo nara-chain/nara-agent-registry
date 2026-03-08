@@ -6,3 +6,4 @@ pub const SEED_POINT_MINT: &[u8] = b"point_mint";
 pub const SEED_REFEREE_MINT: &[u8] = b"referee_mint";
 pub const SEED_REFEREE_ACTIVITY_MINT: &[u8] = b"referee_activity_mint";
 pub const SEED_MINT_AUTHORITY: &[u8] = b"mint_authority";
+pub const SEED_TREASURY: &[u8] = b"treasury";

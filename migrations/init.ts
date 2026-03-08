@@ -9,7 +9,7 @@
 
 import * as anchor from "@coral-xyz/anchor";
 import { Program, web3 } from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import fs from "fs";
 import path from "path";
 // bs58 v4 ships no type declarations; require + cast avoids the hint
@@ -71,11 +71,7 @@ async function main() {
   console.log("\nInitializing config...");
   const tx = await program.methods
     .initConfig()
-    .accountsStrict({
-      admin: adminKeypair.publicKey,
-      config: configKey,
-      systemProgram: SystemProgram.programId,
-    })
+    .accounts({})
     .rpc();
   console.log("Tx:", tx);
 

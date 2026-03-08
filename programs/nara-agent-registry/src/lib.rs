@@ -37,6 +37,10 @@ pub mod nara_agent_registry {
         instructions::update_points_config::update_points_config(ctx, points_self, points_referral)
     }
 
+    pub fn update_activity_config(ctx: Context<UpdateActivityConfig>, activity_reward: u64, referral_activity_reward: u64) -> Result<()> {
+        instructions::update_activity_config::update_activity_config(ctx, activity_reward, referral_activity_reward)
+    }
+
     pub fn update_referral_config(
         ctx: Context<UpdateReferralConfig>,
         referral_register_fee: u64,
@@ -119,5 +123,15 @@ pub mod nara_agent_registry {
         log: String,
     ) -> Result<()> {
         instructions::log_activity::log_activity(ctx, agent_id, model, activity, log)
+    }
+
+    pub fn log_activity_with_referral(
+        ctx: Context<LogActivityWithReferral>,
+        agent_id: String,
+        model: String,
+        activity: String,
+        log: String,
+    ) -> Result<()> {
+        instructions::log_activity::log_activity_with_referral(ctx, agent_id, model, activity, log)
     }
 }

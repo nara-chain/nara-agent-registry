@@ -5,12 +5,10 @@ import {
   Keypair,
   PublicKey,
   SystemProgram,
-  SYSVAR_INSTRUCTIONS_PUBKEY,
   Transaction,
 } from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddressSync,
   getAccount,
 } from "@solana/spl-token";
@@ -59,12 +57,6 @@ describe("nara-agent-registry", () => {
   const pointMintPDA = (): PublicKey =>
     PublicKey.findProgramAddressSync(
       [Buffer.from("point_mint")],
-      program.programId
-    )[0];
-
-  const mintAuthorityPDA = (): PublicKey =>
-    PublicKey.findProgramAddressSync(
-      [Buffer.from("mint_authority")],
       program.programId
     )[0];
 
@@ -160,13 +152,7 @@ describe("nara-agent-registry", () => {
   ) {
     await program.methods
       .registerAgent(agentId)
-      .accountsStrict({
-        authority: authority.publicKey,
-        agent: agentPDA(agentId),
-        config: configPDA(),
-        feeRecipient,
-        systemProgram: SystemProgram.programId,
-      })
+      .accounts({ feeRecipient })
       .rpc();
   }
 
@@ -177,45 +163,19 @@ describe("nara-agent-registry", () => {
     referralAuthorityKey: PublicKey,
     feeRecipient: PublicKey = authority.publicKey,
   ) {
-    const mint = pointMintPDA();
-    const referralPointAta = getAssociatedTokenAddressSync(mint, referralAuthorityKey, false, TOKEN_2022_PROGRAM_ID);
-    const referralRefereeAta = getAssociatedTokenAddressSync(refereeMintPDA(), referralAuthorityKey, false, TOKEN_2022_PROGRAM_ID);
     await program.methods
       .registerAgentWithReferral(agentId)
-      .accountsStrict({
-        authority: authority.publicKey,
-        agent: agentPDA(agentId),
-        config: configPDA(),
+      .accounts({
         feeRecipient,
-        pointMint: pointMintPDA(),
-        mintAuthority: mintAuthorityPDA(),
         referralAgent: referralAgentKey,
         referralAuthority: referralAuthorityKey,
-        referralPointAccount: referralPointAta,
-        refereeMint: refereeMintPDA(),
-        referralRefereeAccount: referralRefereeAta,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
       })
       .rpc();
   }
 
   // ── One-time program init ────────────────────────────────────────────────
   before(async () => {
-    await program.methods
-      .initConfig()
-      .accountsStrict({
-        admin: authority.publicKey,
-        config: configPDA(),
-        pointMint: pointMintPDA(),
-        refereeMint: refereeMintPDA(),
-        refereeActivityMint: refereeActivityMintPDA(),
-        mintAuthority: mintAuthorityPDA(),
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
+    await program.methods.initConfig().rpc();
   });
 
   // ── program_config ────────────────────────────────────────────────────────
@@ -238,7 +198,7 @@ describe("nara-agent-registry", () => {
     it("update_register_fee: admin can update", async () => {
       await program.methods
         .updateRegisterFee(new anchor.BN(0))
-        .accountsStrict({ admin: authority.publicKey, config: configPDA() })
+        .accounts({})
         .rpc();
       let cfg = await program.account.programConfig.fetch(configPDA());
       expect(cfg.registerFee.toNumber()).to.eq(0);
@@ -246,7 +206,7 @@ describe("nara-agent-registry", () => {
       // Restore to 1 SOL
       await program.methods
         .updateRegisterFee(ONE_SOL)
-        .accountsStrict({ admin: authority.publicKey, config: configPDA() })
+        .accounts({})
         .rpc();
       cfg = await program.account.programConfig.fetch(configPDA());
       expect(cfg.registerFee.eq(ONE_SOL)).to.be.true;
@@ -256,7 +216,7 @@ describe("nara-agent-registry", () => {
       const newRecipient = Keypair.generate();
       await program.methods
         .updateFeeRecipient(newRecipient.publicKey)
-        .accountsStrict({ admin: authority.publicKey, config: configPDA() })
+        .accounts({})
         .rpc();
       let cfg = await program.account.programConfig.fetch(configPDA());
       expect(cfg.feeRecipient.toBase58()).to.eq(
@@ -266,7 +226,7 @@ describe("nara-agent-registry", () => {
       // Reset to authority
       await program.methods
         .updateFeeRecipient(authority.publicKey)
-        .accountsStrict({ admin: authority.publicKey, config: configPDA() })
+        .accounts({})
         .rpc();
     });
 
@@ -275,7 +235,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .updateRegisterFee(new anchor.BN(0))
-          .accountsStrict({ admin: other.publicKey, config: configPDA() })
+          .accounts({ admin: other.publicKey })
           .signers([other])
           .rpc();
         expect.fail("expected error");
@@ -289,7 +249,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .updateFeeRecipient(other.publicKey)
-          .accountsStrict({ admin: other.publicKey, config: configPDA() })
+          .accounts({ admin: other.publicKey })
           .signers([other])
           .rpc();
         expect.fail("expected error");
@@ -309,11 +269,11 @@ describe("nara-agent-registry", () => {
       const smallFee = new anchor.BN(10_000_000); // 0.01 SOL
       await program.methods
         .updateRegisterFee(smallFee)
-        .accountsStrict({ admin: authority.publicKey, config: configPDA() })
+        .accounts({})
         .rpc();
       await program.methods
         .updateFeeRecipient(recipient.publicKey)
-        .accountsStrict({ admin: authority.publicKey, config: configPDA() })
+        .accounts({})
         .rpc();
 
       try {
@@ -324,11 +284,11 @@ describe("nara-agent-registry", () => {
       } finally {
         await program.methods
           .updateRegisterFee(ONE_SOL)
-          .accountsStrict({ admin: authority.publicKey, config: configPDA() })
+          .accounts({})
           .rpc();
         await program.methods
           .updateFeeRecipient(authority.publicKey)
-          .accountsStrict({ admin: authority.publicKey, config: configPDA() })
+          .accounts({})
           .rpc();
       }
     });
@@ -383,12 +343,7 @@ describe("nara-agent-registry", () => {
       const bio = "I am an AI agent that writes beautiful haiku poems on demand.";
       await program.methods
         .setBio(AGENT_ID, bio)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          bioAccount: bioPDA(agentKey),
-          systemProgram: SystemProgram.programId,
-        })
+        .accounts({})
         .rpc();
 
       const b = await fetchBio(bioPDA(agentKey));
@@ -400,12 +355,7 @@ describe("nara-agent-registry", () => {
       const newBio = "Short haiku generator.";
       await program.methods
         .setBio(AGENT_ID, newBio)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          bioAccount: bioPDA(agentKey),
-          systemProgram: SystemProgram.programId,
-        })
+        .accounts({})
         .rpc();
 
       const b = await fetchBio(bioPDA(agentKey));
@@ -418,12 +368,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .setBio(AGENT_ID, "evil bio")
-          .accountsStrict({
-            authority: other.publicKey,
-            agent: agentKey,
-            bioAccount: bioPDA(agentKey),
-            systemProgram: SystemProgram.programId,
-          })
+          .accounts({ authority: other.publicKey })
           .signers([other])
           .rpc();
         expect.fail("expected error");
@@ -446,12 +391,7 @@ describe("nara-agent-registry", () => {
       const json = JSON.stringify({ tags: ["ai", "poetry"], lang: "en" });
       await program.methods
         .setMetadata(AGENT_ID, json)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          metadata: metaPDA(agentKey),
-          systemProgram: SystemProgram.programId,
-        })
+        .accounts({})
         .rpc();
 
       const meta = await fetchMetadata(metaPDA(agentKey));
@@ -463,12 +403,7 @@ describe("nara-agent-registry", () => {
       const updated = JSON.stringify({ tags: ["ai"], lang: "zh", version: 2 });
       await program.methods
         .setMetadata(AGENT_ID, updated)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          metadata: metaPDA(agentKey),
-          systemProgram: SystemProgram.programId,
-        })
+        .accounts({})
         .rpc();
 
       const meta = await fetchMetadata(metaPDA(agentKey));
@@ -481,12 +416,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .setMetadata(AGENT_ID, "{}")
-          .accountsStrict({
-            authority: other.publicKey,
-            agent: agentKey,
-            metadata: metaPDA(agentKey),
-            systemProgram: SystemProgram.programId,
-          })
+          .accounts({ authority: other.publicKey })
           .signers([other])
           .rpc();
         expect.fail("expected error");
@@ -509,7 +439,7 @@ describe("nara-agent-registry", () => {
       const agentKey = agentPDA(AGENT_ID);
       await program.methods
         .transferAuthority(AGENT_ID, newOwner.publicKey)
-        .accountsStrict({ authority: authority.publicKey, agent: agentKey })
+        .accounts({})
         .rpc();
 
       const agent = await program.account.agentState.fetch(agentKey);
@@ -521,7 +451,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .transferAuthority(AGENT_ID, authority.publicKey)
-          .accountsStrict({ authority: authority.publicKey, agent: agentKey })
+          .accounts({})
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
@@ -538,17 +468,13 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufKp, MEMORY_BUFFER_HEADER + 10);
       await program.methods
         .initBuffer(agentId, 10)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
 
       try {
         await program.methods
           .transferAuthority(agentId, Keypair.generate().publicKey)
-          .accountsStrict({ authority: authority.publicKey, agent: agentKey })
+          .accounts({})
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
@@ -560,11 +486,7 @@ describe("nara-agent-registry", () => {
       // Cleanup
       await program.methods
         .closeBuffer(agentId)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
     });
   });
@@ -595,11 +517,7 @@ describe("nara-agent-registry", () => {
 
       await program.methods
         .initBuffer(AGENT_ID, totalLen)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          buffer: bufferKp.publicKey,
-        })
+        .accounts({ buffer: bufferKp.publicKey })
         .rpc();
 
       let agent = await program.account.agentState.fetch(agentKey);
@@ -611,32 +529,19 @@ describe("nara-agent-registry", () => {
       const mid = Math.floor(totalLen / 2);
       await program.methods
         .writeToBuffer(AGENT_ID, 0, CONTENT.slice(0, mid))
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          buffer: bufferKp.publicKey,
-        })
+        .accounts({ buffer: bufferKp.publicKey })
         .rpc();
 
       await program.methods
         .writeToBuffer(AGENT_ID, mid, CONTENT.slice(mid))
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          buffer: bufferKp.publicKey,
-        })
+        .accounts({ buffer: bufferKp.publicKey })
         .rpc();
 
       await createProgramAccount(memoryKp, AGENT_MEMORY_HEADER + totalLen);
 
       await program.methods
         .finalizeMemoryNew(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          buffer: bufferKp.publicKey,
-          newMemory: memoryKp.publicKey,
-        })
+        .accounts({ buffer: bufferKp.publicKey, newMemory: memoryKp.publicKey })
         .rpc();
 
       agent = await program.account.agentState.fetch(agentKey);
@@ -666,11 +571,7 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufferKp, MEMORY_BUFFER_HEADER + 100);
       await program.methods
         .initBuffer(AGENT_ID, 100)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufferKp.publicKey,
-        })
+        .accounts({ buffer: bufferKp.publicKey })
         .rpc();
     });
 
@@ -678,9 +579,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .writeToBuffer(AGENT_ID, 10, Buffer.alloc(10))
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentPDA(AGENT_ID),
+          .accounts({
             buffer: bufferKp.publicKey,
           })
           .rpc();
@@ -693,11 +592,7 @@ describe("nara-agent-registry", () => {
     it("write at offset 0 succeeds and advances cursor to 10", async () => {
       await program.methods
         .writeToBuffer(AGENT_ID, 0, Buffer.alloc(10))
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufferKp.publicKey,
-        })
+        .accounts({ buffer: bufferKp.publicKey })
         .rpc();
 
       const buf = await program.account.memoryBuffer.fetch(bufferKp.publicKey);
@@ -708,9 +603,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .writeToBuffer(AGENT_ID, 0, Buffer.alloc(10))
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentPDA(AGENT_ID),
+          .accounts({
             buffer: bufferKp.publicKey,
           })
           .rpc();
@@ -724,9 +617,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .writeToBuffer(AGENT_ID, 10, Buffer.alloc(95))
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentPDA(AGENT_ID),
+          .accounts({
             buffer: bufferKp.publicKey,
           })
           .rpc();
@@ -749,11 +640,7 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufKp, MEMORY_BUFFER_HEADER + 50);
       await program.methods
         .initBuffer(AGENT_ID, 50)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
     });
 
@@ -763,11 +650,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .initBuffer(AGENT_ID, 50)
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentPDA(AGENT_ID),
-            buffer: buf2.publicKey,
-          })
+          .accounts({ buffer: buf2.publicKey })
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
@@ -789,11 +672,7 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(buf1, MEMORY_BUFFER_HEADER + 64);
       await program.methods
         .initBuffer(AGENT_ID, 64)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: buf1.publicKey,
-        })
+        .accounts({ buffer: buf1.publicKey })
         .rpc();
     });
 
@@ -802,11 +681,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .closeBuffer(AGENT_ID)
-          .accountsStrict({
-            authority: other.publicKey,
-            agent: agentPDA(AGENT_ID),
-            buffer: buf1.publicKey,
-          })
+          .accounts({ authority: other.publicKey, buffer: buf1.publicKey } as any)
           .signers([other])
           .rpc();
         expect.fail("expected error");
@@ -818,11 +693,7 @@ describe("nara-agent-registry", () => {
     it("closes buffer and clears pending_buffer", async () => {
       await program.methods
         .closeBuffer(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: buf1.publicKey,
-        })
+        .accounts({ buffer: buf1.publicKey })
         .rpc();
 
       const agent = await program.account.agentState.fetch(agentPDA(AGENT_ID));
@@ -834,11 +705,7 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(buf2, MEMORY_BUFFER_HEADER + 32);
       await program.methods
         .initBuffer(AGENT_ID, 32)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: buf2.publicKey,
-        })
+        .accounts({ buffer: buf2.publicKey })
         .rpc();
 
       const agent = await program.account.agentState.fetch(agentPDA(AGENT_ID));
@@ -847,11 +714,7 @@ describe("nara-agent-registry", () => {
       // Cleanup
       await program.methods
         .closeBuffer(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: buf2.publicKey,
-        })
+        .accounts({ buffer: buf2.publicKey })
         .rpc();
     });
   });
@@ -870,20 +733,12 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufKp, MEMORY_BUFFER_HEADER + TOTAL_LEN);
       await program.methods
         .initBuffer(AGENT_ID, TOTAL_LEN)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
       // Write only half — buffer remains incomplete
       await program.methods
         .writeToBuffer(AGENT_ID, 0, Buffer.alloc(10))
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
     });
 
@@ -892,9 +747,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .finalizeMemoryNew(AGENT_ID)
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentPDA(AGENT_ID),
+          .accounts({
             buffer: bufKp.publicKey,
             newMemory: memoryKp.publicKey,
           })
@@ -909,11 +762,7 @@ describe("nara-agent-registry", () => {
       // Cleanup
       await program.methods
         .closeBuffer(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
     });
   });
@@ -937,29 +786,16 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufKp, MEMORY_BUFFER_HEADER + V1.length);
       await program.methods
         .initBuffer(AGENT_ID, V1.length)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
       await program.methods
         .writeToBuffer(AGENT_ID, 0, V1)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
       await createProgramAccount(memoryV1Kp, AGENT_MEMORY_HEADER + V1.length);
       await program.methods
         .finalizeMemoryNew(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-          newMemory: memoryV1Kp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey, newMemory: memoryV1Kp.publicKey })
         .rpc();
     });
 
@@ -970,31 +806,17 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufV2Kp, MEMORY_BUFFER_HEADER + V2.length);
       await program.methods
         .initBuffer(AGENT_ID, V2.length)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufV2Kp.publicKey,
-        })
+        .accounts({ buffer: bufV2Kp.publicKey })
         .rpc();
       await program.methods
         .writeToBuffer(AGENT_ID, 0, V2)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufV2Kp.publicKey,
-        })
+        .accounts({ buffer: bufV2Kp.publicKey })
         .rpc();
       await createProgramAccount(memoryV2Kp, AGENT_MEMORY_HEADER + V2.length);
 
       await program.methods
         .finalizeMemoryUpdate(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufV2Kp.publicKey,
-          newMemory: memoryV2Kp.publicKey,
-          oldMemory: memoryV1Kp.publicKey,
-        })
+        .accounts({ buffer: bufV2Kp.publicKey, newMemory: memoryV2Kp.publicKey, oldMemory: memoryV1Kp.publicKey })
         .rpc();
 
       const agent = await program.account.agentState.fetch(agentPDA(AGENT_ID));
@@ -1020,28 +842,18 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufKp, MEMORY_BUFFER_HEADER + tiny.length);
       await program.methods
         .initBuffer(AGENT_ID, tiny.length)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
       await program.methods
         .writeToBuffer(AGENT_ID, 0, tiny)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
       await createProgramAccount(memoryKp, AGENT_MEMORY_HEADER + tiny.length);
 
       try {
         await program.methods
           .finalizeMemoryNew(AGENT_ID)
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentPDA(AGENT_ID),
+          .accounts({
             buffer: bufKp.publicKey,
             newMemory: memoryKp.publicKey,
           })
@@ -1056,11 +868,7 @@ describe("nara-agent-registry", () => {
       // Cleanup
       await program.methods
         .closeBuffer(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
     });
 
@@ -1075,19 +883,11 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufKp2, MEMORY_BUFFER_HEADER + data.length);
       await program.methods
         .initBuffer(emptyId, data.length)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(emptyId),
-          buffer: bufKp2.publicKey,
-        })
+        .accounts({ buffer: bufKp2.publicKey })
         .rpc();
       await program.methods
         .writeToBuffer(emptyId, 0, data)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(emptyId),
-          buffer: bufKp2.publicKey,
-        })
+        .accounts({ buffer: bufKp2.publicKey })
         .rpc();
       await createProgramAccount(memoryKp2, AGENT_MEMORY_HEADER + data.length);
       await createProgramAccount(dummyOldMemory, AGENT_MEMORY_HEADER + data.length);
@@ -1095,13 +895,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .finalizeMemoryUpdate(emptyId)
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentPDA(emptyId),
-            buffer: bufKp2.publicKey,
-            newMemory: memoryKp2.publicKey,
-            oldMemory: dummyOldMemory.publicKey,
-          })
+          .accounts({ buffer: bufKp2.publicKey, newMemory: memoryKp2.publicKey, oldMemory: dummyOldMemory.publicKey })
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
@@ -1113,11 +907,7 @@ describe("nara-agent-registry", () => {
       // Cleanup
       await program.methods
         .closeBuffer(emptyId)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(emptyId),
-          buffer: bufKp2.publicKey,
-        })
+        .accounts({ buffer: bufKp2.publicKey })
         .rpc();
     });
   });
@@ -1139,29 +929,16 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufKp, MEMORY_BUFFER_HEADER + INITIAL.length);
       await program.methods
         .initBuffer(AGENT_ID, INITIAL.length)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
       await program.methods
         .writeToBuffer(AGENT_ID, 0, INITIAL)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
       await createProgramAccount(memoryKp, AGENT_MEMORY_HEADER + INITIAL.length);
       await program.methods
         .finalizeMemoryNew(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-          newMemory: memoryKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey, newMemory: memoryKp.publicKey })
         .rpc();
     });
 
@@ -1172,30 +949,16 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(appendBufKp, MEMORY_BUFFER_HEADER + APPEND.length);
       await program.methods
         .initBuffer(AGENT_ID, APPEND.length)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          buffer: appendBufKp.publicKey,
-        })
+        .accounts({ buffer: appendBufKp.publicKey })
         .rpc();
       await program.methods
         .writeToBuffer(AGENT_ID, 0, APPEND)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          buffer: appendBufKp.publicKey,
-        })
+        .accounts({ buffer: appendBufKp.publicKey })
         .rpc();
 
       await program.methods
         .finalizeMemoryAppend(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          buffer: appendBufKp.publicKey,
-          memory: memoryKp.publicKey,
-          systemProgram: SystemProgram.programId,
-        })
+        .accounts({ buffer: appendBufKp.publicKey, memory: memoryKp.publicKey })
         .rpc();
 
       // AgentState updated.
@@ -1224,31 +987,17 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufKp, MEMORY_BUFFER_HEADER + data.length);
       await program.methods
         .initBuffer(emptyId, data.length)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(emptyId),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
       await program.methods
         .writeToBuffer(emptyId, 0, data)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(emptyId),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
 
       try {
         await program.methods
           .finalizeMemoryAppend(emptyId)
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentPDA(emptyId),
-            buffer: bufKp.publicKey,
-            memory: authority.publicKey, // dummy — agent has no memory
-            systemProgram: SystemProgram.programId,
-          })
+          .accounts({ buffer: bufKp.publicKey, memory: authority.publicKey })
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
@@ -1260,11 +1009,7 @@ describe("nara-agent-registry", () => {
       // Cleanup
       await program.methods
         .closeBuffer(emptyId)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(emptyId),
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
     });
   });
@@ -1283,18 +1028,10 @@ describe("nara-agent-registry", () => {
       const refereeAta = getAssociatedTokenAddressSync(refereeMintPDA(), authority.publicKey, false, TOKEN_2022_PROGRAM_ID);
       await program.methods
         .setReferral(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
+        .accounts({
           referralAgent: agentPDA(REFERRAL_ID),
-          config: configPDA(),
-          refereeMint: refereeMintPDA(),
-          mintAuthority: mintAuthorityPDA(),
           referralAuthority: authority.publicKey,
           referralRefereeAccount: refereeAta,
-          tokenProgram: TOKEN_2022_PROGRAM_ID,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
@@ -1314,18 +1051,10 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .setReferral(AGENT_ID)
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentPDA(AGENT_ID),
+          .accounts({
             referralAgent: agentPDA(REFERRAL_ID),
-            config: configPDA(),
-            refereeMint: refereeMintPDA(),
-            mintAuthority: mintAuthorityPDA(),
             referralAuthority: authority.publicKey,
             referralRefereeAccount: refereeAta,
-            tokenProgram: TOKEN_2022_PROGRAM_ID,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
           })
           .rpc();
         expect.fail("should have thrown");
@@ -1341,18 +1070,10 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .setReferral(SELF_AGENT)
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentPDA(SELF_AGENT),
+          .accounts({
             referralAgent: agentPDA(SELF_AGENT),
-            config: configPDA(),
-            refereeMint: refereeMintPDA(),
-            mintAuthority: mintAuthorityPDA(),
             referralAuthority: authority.publicKey,
             referralRefereeAccount: refereeAta,
-            tokenProgram: TOKEN_2022_PROGRAM_ID,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
           })
           .rpc();
         expect.fail("should have thrown");
@@ -1369,19 +1090,12 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .setReferral(NOAUTH_AGENT)
-          .accountsStrict({
+          .accounts({
             authority: fakeAuth.publicKey,
-            agent: agentPDA(NOAUTH_AGENT),
             referralAgent: agentPDA(REFERRAL_ID),
-            config: configPDA(),
-            refereeMint: refereeMintPDA(),
-            mintAuthority: mintAuthorityPDA(),
             referralAuthority: authority.publicKey,
             referralRefereeAccount: refereeAta,
-            tokenProgram: TOKEN_2022_PROGRAM_ID,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-          })
+          } as any)
           .signers([fakeAuth])
           .rpc();
         expect.fail("should have thrown");
@@ -1406,7 +1120,7 @@ describe("nara-agent-registry", () => {
       // Set bio and metadata.
       await program.methods
         .setBio(AGENT_ID, "An agent that will be deleted.")
-        .accountsStrict({
+        .accounts({
           authority: authority.publicKey,
           agent: agentPDA(AGENT_ID),
           bioAccount: bioPDA(agentPDA(AGENT_ID)),
@@ -1416,7 +1130,7 @@ describe("nara-agent-registry", () => {
 
       await program.methods
         .setMetadata(AGENT_ID, JSON.stringify({ tag: "temp" }))
-        .accountsStrict({
+        .accounts({
           authority: authority.publicKey,
           agent: agentPDA(AGENT_ID),
           metadata: metaPDA(agentPDA(AGENT_ID)),
@@ -1428,21 +1142,16 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufKp, MEMORY_BUFFER_HEADER + CONTENT.length);
       await program.methods
         .initBuffer(AGENT_ID, CONTENT.length)
-        .accountsStrict({ authority: authority.publicKey, agent: agentPDA(AGENT_ID), buffer: bufKp.publicKey })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
       await program.methods
         .writeToBuffer(AGENT_ID, 0, CONTENT)
-        .accountsStrict({ authority: authority.publicKey, agent: agentPDA(AGENT_ID), buffer: bufKp.publicKey })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
       await createProgramAccount(memoryKp, AGENT_MEMORY_HEADER + CONTENT.length);
       await program.methods
         .finalizeMemoryNew(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentPDA(AGENT_ID),
-          buffer: bufKp.publicKey,
-          newMemory: memoryKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey, newMemory: memoryKp.publicKey })
         .rpc();
     });
 
@@ -1451,13 +1160,7 @@ describe("nara-agent-registry", () => {
 
       await program.methods
         .deleteAgent(AGENT_ID)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          bio: bioPDA(agentKey),
-          metadata: metaPDA(agentKey),
-          memoryAccount: memoryKp.publicKey,
-        })
+        .accounts({ memoryAccount: memoryKp.publicKey })
         .rpc();
 
       expect(await provider.connection.getAccountInfo(agentKey)).to.be.null;
@@ -1481,13 +1184,7 @@ describe("nara-agent-registry", () => {
       try {
         await program.methods
           .deleteAgent(AGENT_ID)
-          .accountsStrict({
-            authority: other.publicKey,
-            agent: agentKey,
-            bio: bioPDA(agentKey),
-            metadata: metaPDA(agentKey),
-            memoryAccount: authority.publicKey,
-          })
+          .accounts({ authority: other.publicKey, memoryAccount: authority.publicKey } as any)
           .signers([other])
           .rpc();
         expect.fail("expected error");
@@ -1505,19 +1202,13 @@ describe("nara-agent-registry", () => {
       await createProgramAccount(bufKp, MEMORY_BUFFER_HEADER + 10);
       await program.methods
         .initBuffer(agentId3, 10)
-        .accountsStrict({ authority: authority.publicKey, agent: agentKey, buffer: bufKp.publicKey })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
 
       try {
         await program.methods
           .deleteAgent(agentId3)
-          .accountsStrict({
-            authority: authority.publicKey,
-            agent: agentKey,
-            bio: bioPDA(agentKey),
-            metadata: metaPDA(agentKey),
-            memoryAccount: authority.publicKey,
-          })
+          .accounts({ memoryAccount: authority.publicKey })
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
@@ -1527,22 +1218,69 @@ describe("nara-agent-registry", () => {
       // Cleanup
       await program.methods
         .closeBuffer(agentId3)
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          buffer: bufKp.publicKey,
-        })
+        .accounts({ buffer: bufKp.publicKey })
         .rpc();
     });
   });
 
-  // ── log_activity ──────────────────────────────────────────────────────────
+  // ── log_activity (no referral) ────────────────────────────────────────────
   describe("log_activity", () => {
     const AGENT_ID = "log-agent-01";
-    const REFERRAL_ID = "log-referral-01";
 
     before(async () => {
-      // Register referral first, then agent with referral
+      await doRegisterAgent(AGENT_ID);
+    });
+
+    it("emits ActivityLogged event (no quest ix → no points minted)", async () => {
+      const listener = program.addEventListener("activityLogged", (event) => {
+        expect(event.agentId).to.eq(AGENT_ID);
+        expect(event.model).to.eq("gpt-4");
+        expect(event.activity).to.eq("chat");
+        expect(event.log).to.eq("handled user query about weather");
+        expect(event.referralId).to.eq("");
+        expect(event.pointsEarned.toNumber()).to.eq(0);
+        expect(event.referralPointsEarned.toNumber()).to.eq(0);
+        expect(event.authority.toBase58()).to.eq(authority.publicKey.toBase58());
+        expect(event.timestamp.toNumber()).to.be.greaterThan(0);
+      });
+
+      await program.methods
+        .logActivity(AGENT_ID, "gpt-4", "chat", "handled user query about weather")
+        .accounts({})
+        .rpc();
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      program.removeEventListener(listener);
+    });
+
+    it("rejects non-authority signer", async () => {
+      const other = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(other.publicKey, web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+      const mint = pointMintPDA();
+      const otherAta = getAssociatedTokenAddressSync(mint, other.publicKey, false, TOKEN_2022_PROGRAM_ID);
+      try {
+        await program.methods
+          .logActivity(AGENT_ID, "gpt-4", "chat", "evil log")
+          .accounts({
+            authority: other.publicKey,
+            authorityPointAccount: otherAta,
+          } as any)
+          .signers([other])
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("Unauthorized");
+      }
+    });
+  });
+
+  // ── log_activity_with_referral ──────────────────────────────────────────
+  describe("log_activity_with_referral", () => {
+    const AGENT_ID = "log-ref-agent";
+    const REFERRAL_ID = "log-ref-referral";
+
+    before(async () => {
       await doRegisterAgent(REFERRAL_ID);
       await doRegisterAgentWithReferral(
         AGENT_ID,
@@ -1552,10 +1290,7 @@ describe("nara-agent-registry", () => {
     });
 
     it("emits ActivityLogged event with referral (no quest ix → no points minted)", async () => {
-      const agentKey = agentPDA(AGENT_ID);
       const referralKey = agentPDA(REFERRAL_ID);
-      const mint = pointMintPDA();
-      const authorityAta = getAssociatedTokenAddressSync(mint, authority.publicKey, false, TOKEN_2022_PROGRAM_ID);
       const listener = program.addEventListener("activityLogged", (event) => {
         expect(event.agentId).to.eq(AGENT_ID);
         expect(event.model).to.eq("gpt-4");
@@ -1564,69 +1299,29 @@ describe("nara-agent-registry", () => {
         expect(event.referralId).to.eq(REFERRAL_ID);
         expect(event.pointsEarned.toNumber()).to.eq(0);
         expect(event.referralPointsEarned.toNumber()).to.eq(0);
-        expect(event.authority.toBase58()).to.eq(authority.publicKey.toBase58());
-        expect(event.timestamp.toNumber()).to.be.greaterThan(0);
       });
 
       await program.methods
-        .logActivity(
-          AGENT_ID,
-          "gpt-4",
-          "chat",
-          "handled user query about weather",
-        )
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          config: configPDA(),
-          pointMint: mint,
-          mintAuthority: mintAuthorityPDA(),
-          authorityPointAccount: authorityAta,
+        .logActivityWithReferral(AGENT_ID, "gpt-4", "chat", "handled user query about weather")
+        .accounts({
           referralAgent: referralKey,
           referralAuthority: authority.publicKey,
-          referralPointAccount: authorityAta,
-          refereeActivityMint: refereeActivityMintPDA(),
-          referralRefereeActivityAccount: getAssociatedTokenAddressSync(refereeActivityMintPDA(), authority.publicKey, false, TOKEN_2022_PROGRAM_ID),
-          instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
-          tokenProgram: TOKEN_2022_PROGRAM_ID,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       await new Promise((resolve) => setTimeout(resolve, 2000));
       program.removeEventListener(listener);
 
-      // No quest ix in this tx, so no points should be minted by log_activity
+      // No quest ix in this tx, so no points should be minted
       // But register_agent with referral already minted 10 referral_register_points
       const balance = await getPointBalance(authority.publicKey);
       expect(balance).to.eq(BigInt(10));
     });
 
-    it("works without referral (null referral_agent)", async () => {
-      const agentKey = agentPDA(AGENT_ID);
-      const mint = pointMintPDA();
-      const authorityAta = getAssociatedTokenAddressSync(mint, authority.publicKey, false, TOKEN_2022_PROGRAM_ID);
-
+    it("agent with referral can also use logActivity (no referral version)", async () => {
       await program.methods
-        .logActivity(AGENT_ID, "gpt-4", "chat", "no referral log")
-        .accountsStrict({
-          authority: authority.publicKey,
-          agent: agentKey,
-          config: configPDA(),
-          pointMint: mint,
-          mintAuthority: mintAuthorityPDA(),
-          authorityPointAccount: authorityAta,
-          referralAgent: null,
-          referralAuthority: null,
-          referralPointAccount: null,
-          refereeActivityMint: refereeActivityMintPDA(),
-          referralRefereeActivityAccount: null,
-          instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
-          tokenProgram: TOKEN_2022_PROGRAM_ID,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
+        .logActivity(AGENT_ID, "gpt-4", "chat", "using simple log")
+        .accounts({})
         .rpc();
 
       // Still 10 from registration, no new minting
@@ -1635,7 +1330,7 @@ describe("nara-agent-registry", () => {
     });
 
     it("rejects non-authority signer", async () => {
-      const agentKey = agentPDA(AGENT_ID);
+      const referralKey = agentPDA(REFERRAL_ID);
       const other = Keypair.generate();
       const sig = await provider.connection.requestAirdrop(other.publicKey, web3.LAMPORTS_PER_SOL);
       await provider.connection.confirmTransaction(sig);
@@ -1643,24 +1338,13 @@ describe("nara-agent-registry", () => {
       const otherAta = getAssociatedTokenAddressSync(mint, other.publicKey, false, TOKEN_2022_PROGRAM_ID);
       try {
         await program.methods
-          .logActivity(AGENT_ID, "gpt-4", "chat", "evil log")
-          .accountsStrict({
+          .logActivityWithReferral(AGENT_ID, "gpt-4", "chat", "evil log")
+          .accounts({
             authority: other.publicKey,
-            agent: agentKey,
-            config: configPDA(),
-            pointMint: mint,
-            mintAuthority: mintAuthorityPDA(),
             authorityPointAccount: otherAta,
-            referralAgent: null,
-            referralAuthority: null,
-            referralPointAccount: null,
-            refereeActivityMint: refereeActivityMintPDA(),
-            referralRefereeActivityAccount: null,
-            instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
-            tokenProgram: TOKEN_2022_PROGRAM_ID,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-          })
+            referralAgent: referralKey,
+            referralAuthority: authority.publicKey,
+          } as any)
           .signers([other])
           .rpc();
         expect.fail("expected error");

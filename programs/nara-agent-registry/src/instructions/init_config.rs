@@ -46,6 +46,8 @@ pub fn init_config(ctx: Context<InitConfig>) -> Result<()> {
     config.referral_register_fee = DEFAULT_REFERRAL_REGISTER_FEE;
     config.referral_fee_share = DEFAULT_REFERRAL_FEE_SHARE;
     config.referral_register_points = DEFAULT_REFERRAL_REGISTER_POINTS;
+    config.activity_reward = DEFAULT_ACTIVITY_REWARD;
+    config.referral_activity_reward = DEFAULT_REFERRAL_ACTIVITY_REWARD;
     drop(config);
 
     let mint_authority_seeds: &[&[&[u8]]] = &[&[SEED_MINT_AUTHORITY, &[ctx.bumps.mint_authority]]];

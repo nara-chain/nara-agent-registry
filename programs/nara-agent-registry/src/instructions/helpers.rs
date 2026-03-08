@@ -1,8 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::invoke_signed;
 use anchor_lang::solana_program::system_program as sol_system;
-use crate::state::AgentState;
-use crate::error::AgentRegistryError;
 
 /// Create or resize a dynamic PDA and write discriminator + len-prefixed data.
 /// Used by set_bio and set_metadata.
@@ -78,37 +76,6 @@ pub fn write_dynamic_pda<'a>(
         let mut account_data = account.try_borrow_mut_data()?;
         account_data[len_offset..len_offset + 4].copy_from_slice(&(data.len() as u32).to_le_bytes());
         account_data[data_offset..data_offset + data.len()].copy_from_slice(data);
-    }
-
-    Ok(())
-}
-
-/// Validate referral authority and ATA address.
-pub fn validate_referral_accounts(
-    referral_agent: &AccountLoader<AgentState>,
-    referral_authority: &AccountInfo,
-    referral_point_account: Option<&AccountInfo>,
-    point_mint: &Pubkey,
-) -> Result<()> {
-    let referral_record = referral_agent.load()?;
-    require_keys_eq!(
-        referral_authority.key(),
-        referral_record.authority,
-        AgentRegistryError::InvalidReferralAuthority
-    );
-    drop(referral_record);
-
-    if let Some(referral_point_acc) = referral_point_account {
-        let expected_ata = spl_associated_token_account::get_associated_token_address_with_program_id(
-            &referral_authority.key(),
-            point_mint,
-            &spl_token_2022::ID,
-        );
-        require_keys_eq!(
-            referral_point_acc.key(),
-            expected_ata,
-            AgentRegistryError::InvalidReferralPointAccount
-        );
     }
 
     Ok(())

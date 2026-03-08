@@ -22,6 +22,12 @@ pub const DEFAULT_REFERRAL_FEE_SHARE: u64 = 250_000_000;
 /// Default points awarded to referral agent on registration.
 pub const DEFAULT_REFERRAL_REGISTER_POINTS: u64 = 10;
 
+/// Default activity reward in lamports (0.001 SOL), transferred from treasury to user.
+pub const DEFAULT_ACTIVITY_REWARD: u64 = 1_000_000;
+
+/// Default referral activity reward in lamports (0.001 SOL), transferred from treasury to referral.
+pub const DEFAULT_REFERRAL_ACTIVITY_REWARD: u64 = 1_000_000;
+
 /// Point token name.
 pub const POINT_TOKEN_NAME: &str = "NARA Point";
 
