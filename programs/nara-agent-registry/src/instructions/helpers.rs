@@ -115,7 +115,7 @@ pub fn validate_referral_accounts(
 }
 
 /// Create referral authority's ATA if needed and mint points.
-pub fn create_and_mint_referral_points<'a>(
+pub fn create_ata_and_mint<'a>(
     payer: &AccountInfo<'a>,
     referral_authority: &AccountInfo<'a>,
     referral_point_account: &AccountInfo<'a>,
@@ -162,6 +162,124 @@ pub fn create_and_mint_referral_points<'a>(
             referral_point_account.clone(),
             mint_authority.clone(),
         ],
+        mint_authority_seeds,
+    )?;
+
+    Ok(())
+}
+
+/// Create a Token2022 mint with NonTransferable + MetadataPointer extensions.
+pub fn create_token2022_mint<'a>(
+    payer: &AccountInfo<'a>,
+    mint: &AccountInfo<'a>,
+    mint_signer_seeds: &[&[&[u8]]],
+    mint_authority: &AccountInfo<'a>,
+    mint_authority_seeds: &[&[&[u8]]],
+    config: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    name: String,
+    symbol: String,
+    uri: String,
+) -> Result<()> {
+    use spl_token_2022::{
+        extension::ExtensionType,
+        instruction as token_instruction,
+        state::Mint as MintState,
+    };
+    use spl_token_metadata_interface::state::TokenMetadata;
+    use anchor_lang::solana_program::program::invoke_signed;
+
+    let mint_authority_key = mint_authority.key();
+    let config_key = config.key();
+    let mint_key = mint.key();
+
+    let extension_types = vec![
+        ExtensionType::NonTransferable,
+        ExtensionType::MetadataPointer,
+    ];
+    let mint_size = ExtensionType::try_calculate_account_len::<MintState>(&extension_types)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    let rent = Rent::get()?;
+    let lamports = rent.minimum_balance(mint_size);
+
+    invoke_signed(
+        &anchor_lang::solana_program::system_instruction::create_account(
+            payer.key,
+            &mint_key,
+            lamports,
+            mint_size as u64,
+            &spl_token_2022::ID,
+        ),
+        &[payer.clone(), mint.clone(), system_program.clone()],
+        mint_signer_seeds,
+    )?;
+
+    invoke_signed(
+        &token_instruction::initialize_non_transferable_mint(&spl_token_2022::ID, &mint_key)?,
+        &[mint.clone()],
+        mint_signer_seeds,
+    )?;
+
+    invoke_signed(
+        &spl_token_2022::extension::metadata_pointer::instruction::initialize(
+            &spl_token_2022::ID,
+            &mint_key,
+            Some(config_key),
+            Some(mint_key),
+        )?,
+        &[mint.clone()],
+        mint_signer_seeds,
+    )?;
+
+    invoke_signed(
+        &token_instruction::initialize_mint2(
+            &spl_token_2022::ID,
+            &mint_key,
+            &mint_authority_key,
+            Some(&config_key),
+            0,
+        )?,
+        &[mint.clone()],
+        mint_signer_seeds,
+    )?;
+
+    let meta = TokenMetadata {
+        name,
+        symbol,
+        uri,
+        update_authority: Some(config_key).try_into().unwrap(),
+        mint: mint_key,
+        ..Default::default()
+    };
+    let meta_len = meta.tlv_size_of().map_err(|_| ProgramError::InvalidAccountData)?;
+    let new_size = mint_size + meta_len;
+    let new_lamports = rent.minimum_balance(new_size);
+    let extra_lamports = new_lamports.saturating_sub(lamports);
+
+    if extra_lamports > 0 {
+        anchor_lang::solana_program::program::invoke(
+            &anchor_lang::solana_program::system_instruction::transfer(
+                payer.key,
+                &mint_key,
+                extra_lamports,
+            ),
+            &[payer.clone(), mint.clone(), system_program.clone()],
+        )?;
+    }
+
+    invoke_signed(
+        &spl_token_metadata_interface::instruction::initialize(
+            &spl_token_2022::ID,
+            &mint_key,
+            &config_key,
+            &mint_key,
+            &mint_authority_key,
+            meta.name,
+            meta.symbol,
+            meta.uri,
+        ),
+        &[mint.clone(), config.clone(), mint_authority.clone()],
         mint_authority_seeds,
     )?;
 

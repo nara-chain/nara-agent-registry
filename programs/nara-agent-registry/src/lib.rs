@@ -50,6 +50,10 @@ pub mod nara_agent_registry {
         instructions::register_agent::register_agent(ctx, agent_id)
     }
 
+    pub fn register_agent_with_referral(ctx: Context<RegisterAgentWithReferral>, agent_id: String) -> Result<()> {
+        instructions::register_agent::register_agent_with_referral(ctx, agent_id)
+    }
+
     pub fn transfer_authority(
         ctx: Context<TransferAuthority>,
         agent_id: String,

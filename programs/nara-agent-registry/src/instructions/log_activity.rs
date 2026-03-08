@@ -8,7 +8,7 @@ use crate::state::{AgentState, ProgramConfig};
 use crate::error::AgentRegistryError;
 use crate::nara_quest;
 use crate::seeds::*;
-use super::helpers::{validate_referral_accounts, create_and_mint_referral_points};
+use super::helpers::{validate_referral_accounts, create_ata_and_mint};
 
 #[event]
 pub struct ActivityLogged {
@@ -64,6 +64,12 @@ pub struct LogActivity<'info> {
     /// CHECK: Optional referral authority's ATA for point mint. Required when referral_agent is provided.
     #[account(mut)]
     pub referral_point_account: Option<UncheckedAccount<'info>>,
+    /// CHECK: Referee Activity mint PDA.
+    #[account(mut, seeds = [SEED_REFEREE_ACTIVITY_MINT], bump)]
+    pub referee_activity_mint: UncheckedAccount<'info>,
+    /// CHECK: Optional referral authority's ATA for referee activity mint.
+    #[account(mut)]
+    pub referral_referee_activity_account: Option<UncheckedAccount<'info>>,
     /// CHECK: Instructions sysvar for verifying submit_answer ix in tx.
     #[account(address = ix_sysvar::ID)]
     pub instructions: UncheckedAccount<'info>,
@@ -143,6 +149,7 @@ pub fn log_activity(
         let ps = config.points_self;
         let pr = config.points_referral;
         let mint_key = config.point_mint;
+        let referee_activity_mint_key = config.referee_activity_mint;
         drop(config);
 
         let authority_bump = ctx.bumps.mint_authority;
@@ -175,7 +182,7 @@ pub fn log_activity(
                 &ctx.accounts.referral_authority,
                 &ctx.accounts.referral_point_account,
             ) {
-                create_and_mint_referral_points(
+                create_ata_and_mint(
                     &ctx.accounts.authority.to_account_info(),
                     &referral_auth.to_account_info(),
                     &referral_point_acc.to_account_info(),
@@ -189,6 +196,23 @@ pub fn log_activity(
                     &ctx.accounts.associated_token_program.to_account_info(),
                 )?;
                 referral_points_earned = pr;
+
+                // Mint 1 NARA Referee Activity token
+                if let Some(ref referee_activity_acc) = ctx.accounts.referral_referee_activity_account {
+                    create_ata_and_mint(
+                        &ctx.accounts.authority.to_account_info(),
+                        &referral_auth.to_account_info(),
+                        &referee_activity_acc.to_account_info(),
+                        &ctx.accounts.referee_activity_mint.to_account_info(),
+                        &ctx.accounts.mint_authority.to_account_info(),
+                        authority_seeds,
+                        &referee_activity_mint_key,
+                        1,
+                        &ctx.accounts.system_program.to_account_info(),
+                        &ctx.accounts.token_program.to_account_info(),
+                        &ctx.accounts.associated_token_program.to_account_info(),
+                    )?;
+                }
             }
         }
     }

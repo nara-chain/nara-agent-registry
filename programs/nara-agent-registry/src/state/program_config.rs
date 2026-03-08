@@ -8,6 +8,8 @@ pub struct ProgramConfig {
     pub admin: Pubkey,
     pub fee_recipient: Pubkey,
     pub point_mint: Pubkey,
+    pub referee_mint: Pubkey,
+    pub referee_activity_mint: Pubkey,
     pub register_fee: u64,
     pub points_self: u64,
     pub points_referral: u64,

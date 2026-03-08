@@ -29,7 +29,25 @@ pub const POINT_TOKEN_NAME: &str = "NARA Point";
 pub const POINT_TOKEN_SYMBOL: &str = "POINT";
 
 /// Point token metadata URI (placeholder).
-pub const POINT_TOKEN_URI: &str = "https://nara.network/point.json";
+pub const POINT_TOKEN_URI: &str = "https://nara.build/metadata/point.json";
 
 /// Point token decimals.
 pub const POINT_TOKEN_DECIMALS: u8 = 0;
+
+/// Referee token name.
+pub const REFEREE_TOKEN_NAME: &str = "NARA Referee";
+
+/// Referee token symbol.
+pub const REFEREE_TOKEN_SYMBOL: &str = "REFEREE";
+
+/// Referee token metadata URI.
+pub const REFEREE_TOKEN_URI: &str = "https://nara.build/metadata/referee.json";
+
+/// Referee Activity token name.
+pub const REFEREE_ACTIVITY_TOKEN_NAME: &str = "NARA Referee Activity";
+
+/// Referee Activity token symbol.
+pub const REFEREE_ACTIVITY_TOKEN_SYMBOL: &str = "REFACT";
+
+/// Referee Activity token metadata URI.
+pub const REFEREE_ACTIVITY_TOKEN_URI: &str = "https://nara.build/metadata/referee-activity.json";

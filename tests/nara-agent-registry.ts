@@ -68,6 +68,18 @@ describe("nara-agent-registry", () => {
       program.programId
     )[0];
 
+  const refereeMintPDA = (): PublicKey =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("referee_mint")],
+      program.programId
+    )[0];
+
+  const refereeActivityMintPDA = (): PublicKey =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("referee_activity_mint")],
+      program.programId
+    )[0];
+
   // ── Utility: parse agent_id from zero-copy [u8;32] + u32 len ────────────
   function parseAgentId(agent: any): string {
     return Buffer.from(agent.agentId.slice(0, agent.agentIdLen)).toString("utf8");
@@ -119,16 +131,57 @@ describe("nara-agent-registry", () => {
     }
   }
 
-  // ── Helper: register an agent with config + feeRecipient ─────────────────
+  async function getRefereeBalance(wallet: PublicKey): Promise<bigint> {
+    const mint = refereeMintPDA();
+    const ata = getAssociatedTokenAddressSync(mint, wallet, true, TOKEN_2022_PROGRAM_ID);
+    try {
+      const account = await getAccount(provider.connection, ata, undefined, TOKEN_2022_PROGRAM_ID);
+      return account.amount;
+    } catch {
+      return BigInt(0);
+    }
+  }
+
+  async function getRefereeActivityBalance(wallet: PublicKey): Promise<bigint> {
+    const mint = refereeActivityMintPDA();
+    const ata = getAssociatedTokenAddressSync(mint, wallet, true, TOKEN_2022_PROGRAM_ID);
+    try {
+      const account = await getAccount(provider.connection, ata, undefined, TOKEN_2022_PROGRAM_ID);
+      return account.amount;
+    } catch {
+      return BigInt(0);
+    }
+  }
+
+  // ── Helper: register an agent (no referral) ─────────────────────────────
   async function doRegisterAgent(
     agentId: string,
     feeRecipient: PublicKey = authority.publicKey,
-    referralAgentKey: PublicKey | null = null,
-    referralAuthorityKey: PublicKey | null = null,
-    referralPointAccount: PublicKey | null = null,
   ) {
     await program.methods
       .registerAgent(agentId)
+      .accountsStrict({
+        authority: authority.publicKey,
+        agent: agentPDA(agentId),
+        config: configPDA(),
+        feeRecipient,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
+  // ── Helper: register an agent with referral ────────────────────────────
+  async function doRegisterAgentWithReferral(
+    agentId: string,
+    referralAgentKey: PublicKey,
+    referralAuthorityKey: PublicKey,
+    feeRecipient: PublicKey = authority.publicKey,
+  ) {
+    const mint = pointMintPDA();
+    const referralPointAta = getAssociatedTokenAddressSync(mint, referralAuthorityKey, false, TOKEN_2022_PROGRAM_ID);
+    const referralRefereeAta = getAssociatedTokenAddressSync(refereeMintPDA(), referralAuthorityKey, false, TOKEN_2022_PROGRAM_ID);
+    await program.methods
+      .registerAgentWithReferral(agentId)
       .accountsStrict({
         authority: authority.publicKey,
         agent: agentPDA(agentId),
@@ -138,7 +191,9 @@ describe("nara-agent-registry", () => {
         mintAuthority: mintAuthorityPDA(),
         referralAgent: referralAgentKey,
         referralAuthority: referralAuthorityKey,
-        referralPointAccount,
+        referralPointAccount: referralPointAta,
+        refereeMint: refereeMintPDA(),
+        referralRefereeAccount: referralRefereeAta,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -154,6 +209,8 @@ describe("nara-agent-registry", () => {
         admin: authority.publicKey,
         config: configPDA(),
         pointMint: pointMintPDA(),
+        refereeMint: refereeMintPDA(),
+        refereeActivityMint: refereeActivityMintPDA(),
         mintAuthority: mintAuthorityPDA(),
         tokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -1223,12 +1280,21 @@ describe("nara-agent-registry", () => {
     });
 
     it("sets referral on an agent without one", async () => {
+      const refereeAta = getAssociatedTokenAddressSync(refereeMintPDA(), authority.publicKey, false, TOKEN_2022_PROGRAM_ID);
       await program.methods
         .setReferral(AGENT_ID)
         .accountsStrict({
           authority: authority.publicKey,
           agent: agentPDA(AGENT_ID),
           referralAgent: agentPDA(REFERRAL_ID),
+          config: configPDA(),
+          refereeMint: refereeMintPDA(),
+          mintAuthority: mintAuthorityPDA(),
+          referralAuthority: authority.publicKey,
+          referralRefereeAccount: refereeAta,
+          tokenProgram: TOKEN_2022_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
@@ -1237,9 +1303,14 @@ describe("nara-agent-registry", () => {
       const ridBytes = agent.referralId.slice(0, ridLen);
       const rid = Buffer.from(ridBytes).toString("utf-8");
       expect(rid).to.eq(REFERRAL_ID);
+
+      // Verify NARA Referee token was minted (1 from set_referral)
+      const balance = await getRefereeBalance(authority.publicKey);
+      expect(balance).to.eq(BigInt(1));
     });
 
     it("rejects setting referral again (ReferralAlreadySet)", async () => {
+      const refereeAta = getAssociatedTokenAddressSync(refereeMintPDA(), authority.publicKey, false, TOKEN_2022_PROGRAM_ID);
       try {
         await program.methods
           .setReferral(AGENT_ID)
@@ -1247,6 +1318,14 @@ describe("nara-agent-registry", () => {
             authority: authority.publicKey,
             agent: agentPDA(AGENT_ID),
             referralAgent: agentPDA(REFERRAL_ID),
+            config: configPDA(),
+            refereeMint: refereeMintPDA(),
+            mintAuthority: mintAuthorityPDA(),
+            referralAuthority: authority.publicKey,
+            referralRefereeAccount: refereeAta,
+            tokenProgram: TOKEN_2022_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
         expect.fail("should have thrown");
@@ -1258,6 +1337,7 @@ describe("nara-agent-registry", () => {
     it("rejects self-referral", async () => {
       const SELF_AGENT = "self-ref-agent";
       await doRegisterAgent(SELF_AGENT);
+      const refereeAta = getAssociatedTokenAddressSync(refereeMintPDA(), authority.publicKey, false, TOKEN_2022_PROGRAM_ID);
       try {
         await program.methods
           .setReferral(SELF_AGENT)
@@ -1265,6 +1345,14 @@ describe("nara-agent-registry", () => {
             authority: authority.publicKey,
             agent: agentPDA(SELF_AGENT),
             referralAgent: agentPDA(SELF_AGENT),
+            config: configPDA(),
+            refereeMint: refereeMintPDA(),
+            mintAuthority: mintAuthorityPDA(),
+            referralAuthority: authority.publicKey,
+            referralRefereeAccount: refereeAta,
+            tokenProgram: TOKEN_2022_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
         expect.fail("should have thrown");
@@ -1277,6 +1365,7 @@ describe("nara-agent-registry", () => {
       const NOAUTH_AGENT = "noauth-ref-ag";
       await doRegisterAgent(NOAUTH_AGENT);
       const fakeAuth = Keypair.generate();
+      const refereeAta = getAssociatedTokenAddressSync(refereeMintPDA(), authority.publicKey, false, TOKEN_2022_PROGRAM_ID);
       try {
         await program.methods
           .setReferral(NOAUTH_AGENT)
@@ -1284,6 +1373,14 @@ describe("nara-agent-registry", () => {
             authority: fakeAuth.publicKey,
             agent: agentPDA(NOAUTH_AGENT),
             referralAgent: agentPDA(REFERRAL_ID),
+            config: configPDA(),
+            refereeMint: refereeMintPDA(),
+            mintAuthority: mintAuthorityPDA(),
+            referralAuthority: authority.publicKey,
+            referralRefereeAccount: refereeAta,
+            tokenProgram: TOKEN_2022_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
           })
           .signers([fakeAuth])
           .rpc();
@@ -1447,15 +1544,10 @@ describe("nara-agent-registry", () => {
     before(async () => {
       // Register referral first, then agent with referral
       await doRegisterAgent(REFERRAL_ID);
-      const referralKey = agentPDA(REFERRAL_ID);
-      const mint = pointMintPDA();
-      const referralAta = getAssociatedTokenAddressSync(mint, authority.publicKey, false, TOKEN_2022_PROGRAM_ID);
-      await doRegisterAgent(
+      await doRegisterAgentWithReferral(
         AGENT_ID,
+        agentPDA(REFERRAL_ID),
         authority.publicKey,
-        referralKey,
-        authority.publicKey,
-        referralAta,
       );
     });
 
@@ -1493,6 +1585,8 @@ describe("nara-agent-registry", () => {
           referralAgent: referralKey,
           referralAuthority: authority.publicKey,
           referralPointAccount: authorityAta,
+          refereeActivityMint: refereeActivityMintPDA(),
+          referralRefereeActivityAccount: getAssociatedTokenAddressSync(refereeActivityMintPDA(), authority.publicKey, false, TOKEN_2022_PROGRAM_ID),
           instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -1526,6 +1620,8 @@ describe("nara-agent-registry", () => {
           referralAgent: null,
           referralAuthority: null,
           referralPointAccount: null,
+          refereeActivityMint: refereeActivityMintPDA(),
+          referralRefereeActivityAccount: null,
           instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -1558,6 +1654,8 @@ describe("nara-agent-registry", () => {
             referralAgent: null,
             referralAuthority: null,
             referralPointAccount: null,
+            refereeActivityMint: refereeActivityMintPDA(),
+            referralRefereeActivityAccount: null,
             instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
             tokenProgram: TOKEN_2022_PROGRAM_ID,
             associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
