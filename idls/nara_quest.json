@@ -204,6 +204,216 @@
       "args": []
     },
     {
+      "name": "set_max_reward_count",
+      "discriminator": [
+        247,
+        62,
+        67,
+        243,
+        249,
+        243,
+        102,
+        62
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "max_reward_count",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "set_min_reward_count",
+      "discriminator": [
+        108,
+        213,
+        24,
+        47,
+        93,
+        149,
+        58,
+        4
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "min_reward_count",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "stake",
+      "discriminator": [
+        206,
+        176,
+        202,
+        18,
+        200,
+        209,
+        179,
+        108
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "stake_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  107,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stake_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  107,
+                  101,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "submit_answer",
       "discriminator": [
         221,
@@ -259,6 +469,34 @@
                   110,
                   101,
                   114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stake_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  107,
+                  101
                 ]
               },
               {
@@ -393,6 +631,116 @@
           "type": "pubkey"
         }
       ]
+    },
+    {
+      "name": "unstake",
+      "discriminator": [
+        90,
+        95,
+        107,
+        42,
+        205,
+        124,
+        50,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "stake_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  107,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stake_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  107,
+                  101,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -420,6 +768,19 @@
         177,
         109,
         188
+      ]
+    },
+    {
+      "name": "StakeRecord",
+      "discriminator": [
+        174,
+        163,
+        11,
+        208,
+        150,
+        236,
+        11,
+        205
       ]
     },
     {
@@ -491,6 +852,26 @@
       "code": 6007,
       "name": "AlreadyAnswered",
       "msg": "Already answered this round"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidMinRewardCount",
+      "msg": "min_reward_count must be > 0 and <= max_reward_count"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidMaxRewardCount",
+      "msg": "max_reward_count must be >= min_reward_count"
+    },
+    {
+      "code": 6010,
+      "name": "UnstakeNotReady",
+      "msg": "Cannot unstake until round advances or deadline passes"
+    },
+    {
+      "code": 6011,
+      "name": "InsufficientStakeBalance",
+      "msg": "Unstake amount exceeds staked balance"
     }
   ],
   "types": [
@@ -534,6 +915,14 @@
           {
             "name": "authority",
             "type": "pubkey"
+          },
+          {
+            "name": "min_reward_count",
+            "type": "u32"
+          },
+          {
+            "name": "max_reward_count",
+            "type": "u32"
           },
           {
             "name": "_padding",
@@ -592,6 +981,39 @@
           {
             "name": "difficulty",
             "type": "u32"
+          },
+          {
+            "name": "stake_requirement",
+            "type": "u64"
+          },
+          {
+            "name": "min_winner_stake",
+            "type": "u64"
+          },
+          {
+            "name": "_padding",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "StakeRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "stake_round",
+            "type": "u64"
           },
           {
             "name": "_padding",

@@ -450,10 +450,10 @@ fn scan_transaction_instructions(
                     && ix.data.len() >= 8
                     && ix.data[..8] == *nara_quest::client::args::SubmitAnswer::DISCRIMINATOR
                 {
-                    // SubmitAnswer accounts per IDL: pool(0), winner_record(1), vault(2), user(3), payer(4), system_program(5)
-                    require!(ix.accounts.len() > 3, AgentRegistryError::QuestIxNotFound);
+                    // SubmitAnswer accounts per IDL: pool(0), winner_record(1), stake_record(2), vault(3), user(4), payer(5), system_program(6)
+                    require!(ix.accounts.len() > 4, AgentRegistryError::QuestIxNotFound);
                     require_keys_eq!(
-                        ix.accounts[3].pubkey,
+                        ix.accounts[4].pubkey,
                         *authority,
                         AgentRegistryError::QuestUserMismatch
                     );
