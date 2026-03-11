@@ -204,66 +204,16 @@
       "args": []
     },
     {
-      "name": "set_max_reward_count",
+      "name": "set_reward_config",
       "discriminator": [
-        247,
-        62,
-        67,
-        243,
-        249,
-        243,
-        102,
-        62
-      ],
-      "accounts": [
-        {
-          "name": "game_config",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  115,
-                  116,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "authority",
-          "signer": true
-        }
-      ],
-      "args": [
-        {
-          "name": "max_reward_count",
-          "type": "u32"
-        }
-      ]
-    },
-    {
-      "name": "set_min_reward_count",
-      "discriminator": [
-        108,
-        213,
-        24,
-        47,
-        93,
-        149,
-        58,
-        4
+        163,
+        34,
+        211,
+        14,
+        25,
+        118,
+        181,
+        233
       ],
       "accounts": [
         {
@@ -300,6 +250,68 @@
         {
           "name": "min_reward_count",
           "type": "u32"
+        },
+        {
+          "name": "max_reward_count",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "set_stake_config",
+      "discriminator": [
+        84,
+        37,
+        76,
+        39,
+        236,
+        111,
+        214,
+        191
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "bps_high",
+          "type": "u64"
+        },
+        {
+          "name": "bps_low",
+          "type": "u64"
+        },
+        {
+          "name": "decay_seconds",
+          "type": "i64"
         }
       ]
     },
@@ -498,6 +510,30 @@
         48
       ],
       "accounts": [
+        {
+          "name": "game_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
         {
           "name": "pool",
           "writable": true,
@@ -1192,12 +1228,12 @@
     {
       "code": 6008,
       "name": "InvalidMinRewardCount",
-      "msg": "min_reward_count must be > 0 and <= max_reward_count"
+      "msg": "Invalid reward config: need 0 < min <= max"
     },
     {
       "code": 6009,
-      "name": "InvalidMaxRewardCount",
-      "msg": "max_reward_count must be >= min_reward_count"
+      "name": "InvalidStakeConfig",
+      "msg": "Stake config values must be > 0"
     },
     {
       "code": 6010,
@@ -1208,6 +1244,11 @@
       "code": 6011,
       "name": "InsufficientStakeBalance",
       "msg": "Unstake amount exceeds staked balance"
+    },
+    {
+      "code": 6012,
+      "name": "InsufficientStake",
+      "msg": "Stake does not meet dynamic requirement"
     }
   ],
   "types": [
@@ -1259,6 +1300,18 @@
           {
             "name": "max_reward_count",
             "type": "u32"
+          },
+          {
+            "name": "stake_bps_high",
+            "type": "u64"
+          },
+          {
+            "name": "stake_bps_low",
+            "type": "u64"
+          },
+          {
+            "name": "decay_seconds",
+            "type": "i64"
           },
           {
             "name": "_padding",
@@ -1319,11 +1372,19 @@
             "type": "u32"
           },
           {
-            "name": "stake_requirement",
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "stake_high",
             "type": "u64"
           },
           {
-            "name": "min_winner_stake",
+            "name": "stake_low",
+            "type": "u64"
+          },
+          {
+            "name": "avg_participant_stake",
             "type": "u64"
           },
           {
