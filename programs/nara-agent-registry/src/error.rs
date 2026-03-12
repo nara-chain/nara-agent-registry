@@ -32,8 +32,8 @@ pub enum AgentRegistryError {
     MemoryNotFound,
     #[msg("Cannot perform this operation while a pending buffer exists")]
     HasPendingBuffer,
-    #[msg("Fee recipient does not match config.fee_recipient")]
-    InvalidFeeRecipient,
+    #[msg("Fee vault has insufficient balance for withdrawal")]
+    InsufficientFeeVaultBalance,
     #[msg("Agent ID too long: max 32 bytes")]
     AgentIdTooLong,
     #[msg("Agent ID must be lowercase")]
