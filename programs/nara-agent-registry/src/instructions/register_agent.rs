@@ -73,9 +73,9 @@ pub struct RegisterAgentWithReferral<'info> {
     pub agent: AccountLoader<'info, AgentState>,
     #[account(seeds = [SEED_CONFIG], bump)]
     pub config: AccountLoader<'info, ProgramConfig>,
-    /// CHECK: must equal config.fee_recipient; validated in handler.
-    #[account(mut)]
-    pub fee_recipient: UncheckedAccount<'info>,
+    /// CHECK: Fee vault PDA; validated by seeds constraint.
+    #[account(mut, seeds = [SEED_FEE_VAULT], bump)]
+    pub fee_vault: UncheckedAccount<'info>,
     #[account(mut, seeds = [SEED_POINT_MINT], bump)]
     pub point_mint: InterfaceAccount<'info, MintInterface>,
     /// CHECK: Mint authority PDA for signing mint_to.
@@ -112,12 +112,6 @@ pub fn register_agent_with_referral(ctx: Context<RegisterAgentWithReferral>, age
     validate_agent_id(&agent_id)?;
 
     let config = ctx.accounts.config.load()?;
-    require_keys_eq!(
-        ctx.accounts.fee_recipient.key(),
-        config.fee_recipient,
-        AgentRegistryError::InvalidFeeRecipient
-    );
-
     let fee = config.referral_register_fee;
     let referral_share = config.referral_fee_share;
     let system_share = fee.saturating_sub(referral_share);
@@ -136,14 +130,14 @@ pub fn register_agent_with_referral(ctx: Context<RegisterAgentWithReferral>, age
     rid[..rid_len].copy_from_slice(&referral_record.agent_id[..rid_len]);
     drop(referral_record);
 
-    // Transfer system's share to fee_recipient
-    if system_share > 0 && ctx.accounts.fee_recipient.key() != ctx.accounts.authority.key() {
+    // Transfer system's share to fee_vault
+    if system_share > 0 {
         anchor_lang::system_program::transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
                 anchor_lang::system_program::Transfer {
                     from: ctx.accounts.authority.to_account_info(),
-                    to: ctx.accounts.fee_recipient.to_account_info(),
+                    to: ctx.accounts.fee_vault.to_account_info(),
                 },
             ),
             system_share,
