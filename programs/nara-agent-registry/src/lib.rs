@@ -130,4 +130,8 @@ pub mod nara_agent_registry {
     ) -> Result<()> {
         instructions::log_activity::log_activity_with_referral(ctx, agent_id, model, activity, log)
     }
+
+    pub fn withdraw_fees(ctx: Context<WithdrawFees>, amount: u64) -> Result<()> {
+        instructions::withdraw_fees::withdraw_fees(ctx, amount)
+    }
 }

@@ -17,6 +17,7 @@ pub mod update_admin;
 pub mod update_points_config;
 pub mod update_referral_config;
 pub mod update_register_fee;
+pub mod withdraw_fees;
 pub mod write_to_buffer;
 
 pub use close_buffer::*;
@@ -37,4 +38,5 @@ pub use update_admin::*;
 pub use update_points_config::*;
 pub use update_referral_config::*;
 pub use update_register_fee::*;
+pub use withdraw_fees::*;
 pub use write_to_buffer::*;
