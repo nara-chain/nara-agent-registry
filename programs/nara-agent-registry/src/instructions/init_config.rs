@@ -17,6 +17,9 @@ pub struct InitConfig<'info> {
         bump,
     )]
     pub config: AccountLoader<'info, ProgramConfig>,
+    /// CHECK: Fee vault PDA for holding registration fees; validated by seeds constraint.
+    #[account(mut, seeds = [SEED_FEE_VAULT], bump)]
+    pub fee_vault: UncheckedAccount<'info>,
     /// CHECK: Point mint PDA, created in handler via CPI.
     #[account(mut, seeds = [SEED_POINT_MINT], bump)]
     pub point_mint: UncheckedAccount<'info>,
@@ -37,7 +40,7 @@ pub fn init_config(ctx: Context<InitConfig>) -> Result<()> {
     let mut config = ctx.accounts.config.load_init()?;
     config.admin = ctx.accounts.admin.key();
     config.register_fee = DEFAULT_REGISTER_FEE;
-    config.fee_recipient = ctx.accounts.admin.key();
+    config.fee_vault = ctx.accounts.fee_vault.key();
     config.point_mint = ctx.accounts.point_mint.key();
     config.referee_mint = ctx.accounts.referee_mint.key();
     config.referee_activity_mint = ctx.accounts.referee_activity_mint.key();
