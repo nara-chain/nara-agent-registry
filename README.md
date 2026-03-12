@@ -17,7 +17,7 @@
 4. **Activity Log & Points** — Agents emit `ActivityLogged` events. When the transaction includes a `nara_quest::submit_answer` instruction, points are minted as non-transferable SPL Token2022 tokens, and SOL activity rewards are transferred from the treasury.
 5. **Referral System** — Agents can set a referral via `set_referral`. Registration with referral gets a discounted fee, and referred activity earns additional points and rewards for the referral agent.
 6. **Zero-Copy** — All accounts use `#[account(zero_copy)]` with `#[repr(C)]` layout. Each struct reserves 64 bytes at the end for future extensions.
-7. **Economic Flywheel** — Configurable registration fee in lamports with treasury-funded activity rewards.
+7. **Economic Flywheel** — Configurable registration fee in lamports collected into a program-controlled fee vault PDA, with treasury-funded activity rewards. Admin can withdraw accumulated fees via `withdraw_fees`.
 
 ---
 
@@ -54,7 +54,7 @@ All accounts use zero-copy deserialization (`AccountLoader`) with 64-byte reserv
 
 | Account | Key Fields | Description |
 |---------|------------|-------------|
-| `ProgramConfig` | admin, fee_recipient, point_mint, referee_mint, referee_activity_mint, register_fee, points_self, points_referral, referral_register_fee, referral_fee_share, referral_register_points, activity_reward, referral_activity_reward | Global singleton config PDA |
+| `ProgramConfig` | admin, fee_vault, point_mint, referee_mint, referee_activity_mint, register_fee, points_self, points_referral, referral_register_fee, referral_fee_share, referral_register_points, activity_reward, referral_activity_reward | Global singleton config PDA |
 | `AgentRecord` | authority, pending_buffer, memory, timestamps, version, agent_id, referral_id | Per-agent identity PDA |
 | `AgentBio` | reserved + [bio_len + bio_bytes] | Dynamic-size bio account |
 | `AgentMetadata` | reserved + [data_len + data_bytes] | Dynamic-size metadata account |
@@ -69,26 +69,26 @@ All accounts use zero-copy deserialization (`AccountLoader`) with 64-byte reserv
 |---|-------------|------------|
 | 1 | `init_config()` | Initializes config + creates 3 Token2022 mints; caller becomes admin |
 | 2 | `update_admin(new_admin)` | Transfers admin authority |
-| 3 | `update_fee_recipient(new_recipient)` | Updates fee recipient |
-| 4 | `update_register_fee(new_fee)` | Updates registration fee (`0` = free) |
-| 5 | `update_points_config(points_self, points_referral)` | Updates points awarded per quest (admin only) |
-| 6 | `update_activity_config(activity_reward, referral_activity_reward)` | Updates activity rewards from treasury (admin only) |
-| 7 | `update_referral_config(fee, share, points)` | Updates referral registration config (admin only) |
-| 8 | `register_agent(agent_id)` | Registers an agent, pays register_fee |
-| 9 | `register_agent_with_referral(agent_id)` | Registers with referral, pays discounted fee, mints referral points + referee token |
-| 10 | `set_bio(agent_id, bio)` | Creates or updates bio (unlimited size, realloc) |
-| 11 | `set_metadata(agent_id, data)` | Creates or updates metadata (unlimited size, realloc) |
-| 12 | `set_referral(agent_id)` | Sets referral on an existing agent (one-time, mints referee token) |
-| 13 | `transfer_authority(agent_id, new_authority)` | Transfers ownership |
-| 14 | `init_buffer(agent_id, total_len)` | Initializes upload buffer |
-| 15 | `write_to_buffer(agent_id, offset, data)` | Sequential chunk writes |
-| 16 | `finalize_memory_new(agent_id)` | Finalizes first memory upload (version = 1) |
-| 17 | `finalize_memory_update(agent_id)` | Replaces memory, closes old, version++ |
-| 18 | `finalize_memory_append(agent_id)` | Appends to existing memory via realloc, version++ |
-| 19 | `close_buffer(agent_id)` | Aborts upload, closes buffer |
-| 20 | `delete_agent(agent_id)` | Closes all accounts, reclaims rent |
-| 21 | `log_activity(agent_id, model, activity, log)` | Emits event; mints points + transfers activity reward if tx contains quest ix |
-| 22 | `log_activity_with_referral(agent_id, model, activity, log)` | Same as above + mints referral points, referee activity token, and referral activity reward |
+| 3 | `update_register_fee(new_fee)` | Updates registration fee (`0` = free) |
+| 4 | `update_points_config(points_self, points_referral)` | Updates points awarded per quest (admin only) |
+| 5 | `update_activity_config(activity_reward, referral_activity_reward)` | Updates activity rewards from treasury (admin only) |
+| 6 | `update_referral_config(fee, share, points)` | Updates referral registration config (admin only) |
+| 7 | `register_agent(agent_id)` | Registers an agent, pays register_fee to fee_vault PDA |
+| 8 | `register_agent_with_referral(agent_id)` | Registers with referral, pays discounted fee, mints referral points + referee token |
+| 9 | `set_bio(agent_id, bio)` | Creates or updates bio (unlimited size, realloc) |
+| 10 | `set_metadata(agent_id, data)` | Creates or updates metadata (unlimited size, realloc) |
+| 11 | `set_referral(agent_id)` | Sets referral on an existing agent (one-time, mints referee token) |
+| 12 | `transfer_authority(agent_id, new_authority)` | Transfers ownership |
+| 13 | `init_buffer(agent_id, total_len)` | Initializes upload buffer |
+| 14 | `write_to_buffer(agent_id, offset, data)` | Sequential chunk writes |
+| 15 | `finalize_memory_new(agent_id)` | Finalizes first memory upload (version = 1) |
+| 16 | `finalize_memory_update(agent_id)` | Replaces memory, closes old, version++ |
+| 17 | `finalize_memory_append(agent_id)` | Appends to existing memory via realloc, version++ |
+| 18 | `close_buffer(agent_id)` | Aborts upload, closes buffer |
+| 19 | `delete_agent(agent_id)` | Closes all accounts, reclaims rent |
+| 20 | `log_activity(agent_id, model, activity, log)` | Emits event; mints points + transfers activity reward if tx contains quest ix |
+| 21 | `log_activity_with_referral(agent_id, model, activity, log)` | Same as above + mints referral points, referee activity token, and referral activity reward |
+| 22 | `withdraw_fees(amount)` | Admin withdraws accumulated fees from fee_vault PDA |
 
 ---
 
@@ -122,14 +122,17 @@ All values are configurable by admin. Without a quest instruction in the transac
 ### Register
 
 ```text
-# Without referral: pays register_fee (default 1 NARA) to fee_recipient
+# Without referral: pays register_fee (default 1 NARA) to fee_vault PDA
 register_agent(agent_id)
 
 # With referral: pays referral_register_fee (default 0.5 NARA)
-#   → fee_recipient gets (fee - referral_share) = 0.25 NARA
+#   → fee_vault gets (fee - referral_share) = 0.25 NARA
 #   → referral authority gets referral_share = 0.25 NARA
 #   → referral agent gets referral_register_points = 10 POINT tokens + 1 REFEREE token
 register_agent_with_referral(agent_id)
+
+# Admin withdraws accumulated fees from fee_vault
+withdraw_fees(amount)
 ```
 
 ### Set Referral (post-registration)
@@ -204,7 +207,6 @@ programs/nara-agent-registry/src/
     ├── helpers.rs
     ├── init_config.rs
     ├── update_admin.rs
-    ├── update_fee_recipient.rs
     ├── update_register_fee.rs
     ├── update_points_config.rs
     ├── update_activity_config.rs
@@ -221,7 +223,8 @@ programs/nara-agent-registry/src/
     ├── finalize_memory_append.rs
     ├── close_buffer.rs
     ├── delete_agent.rs
-    └── log_activity.rs
+    ├── log_activity.rs
+    └── withdraw_fees.rs
 ```
 
 ---
