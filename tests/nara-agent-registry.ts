@@ -72,6 +72,12 @@ describe("nara-agent-registry", () => {
       program.programId
     )[0];
 
+  const feeVaultPDA = (): PublicKey =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("fee_vault")],
+      program.programId
+    )[0];
+
   // ── Utility: parse agent_id from zero-copy [u8;32] + u32 len ────────────
   function parseAgentId(agent: any): string {
     return Buffer.from(agent.agentId.slice(0, agent.agentIdLen)).toString("utf8");
@@ -146,13 +152,10 @@ describe("nara-agent-registry", () => {
   }
 
   // ── Helper: register an agent (no referral) ─────────────────────────────
-  async function doRegisterAgent(
-    agentId: string,
-    feeRecipient: PublicKey = authority.publicKey,
-  ) {
+  async function doRegisterAgent(agentId: string) {
     await program.methods
       .registerAgent(agentId)
-      .accounts({ feeRecipient })
+      .accounts({ feeVault: feeVaultPDA() })
       .rpc();
   }
 
@@ -161,12 +164,11 @@ describe("nara-agent-registry", () => {
     agentId: string,
     referralAgentKey: PublicKey,
     referralAuthorityKey: PublicKey,
-    feeRecipient: PublicKey = authority.publicKey,
   ) {
     await program.methods
       .registerAgentWithReferral(agentId)
       .accounts({
-        feeRecipient,
+        feeVault: feeVaultPDA(),
         referralAgent: referralAgentKey,
         referralAuthority: referralAuthorityKey,
       })
@@ -184,7 +186,7 @@ describe("nara-agent-registry", () => {
       const cfg = await program.account.programConfig.fetch(configPDA());
       expect(cfg.admin.toBase58()).to.eq(authority.publicKey.toBase58());
       expect(cfg.registerFee.eq(ONE_SOL)).to.be.true;
-      expect(cfg.feeRecipient.toBase58()).to.eq(authority.publicKey.toBase58());
+      expect(cfg.feeVault.toBase58()).to.eq(feeVaultPDA().toBase58());
       expect(cfg.pointMint.toBase58()).to.eq(pointMintPDA().toBase58());
     });
 
@@ -212,24 +214,6 @@ describe("nara-agent-registry", () => {
       expect(cfg.registerFee.eq(ONE_SOL)).to.be.true;
     });
 
-    it("update_fee_recipient: admin can change and reset", async () => {
-      const newRecipient = Keypair.generate();
-      await program.methods
-        .updateFeeRecipient(newRecipient.publicKey)
-        .accounts({})
-        .rpc();
-      let cfg = await program.account.programConfig.fetch(configPDA());
-      expect(cfg.feeRecipient.toBase58()).to.eq(
-        newRecipient.publicKey.toBase58()
-      );
-
-      // Reset to authority
-      await program.methods
-        .updateFeeRecipient(authority.publicKey)
-        .accounts({})
-        .rpc();
-    });
-
     it("rejects non-admin on update_register_fee", async () => {
       const other = Keypair.generate();
       try {
@@ -244,11 +228,59 @@ describe("nara-agent-registry", () => {
       }
     });
 
-    it("rejects non-admin on update_fee_recipient", async () => {
+    it("collects fee to fee_vault PDA", async () => {
+      const smallFee = new anchor.BN(10_000_000); // 0.01 SOL
+      await program.methods
+        .updateRegisterFee(smallFee)
+        .accounts({})
+        .rpc();
+
+      try {
+        const vaultKey = feeVaultPDA();
+        const before = await provider.connection.getBalance(vaultKey);
+        await doRegisterAgent("fee-vault-test-01");
+        const after = await provider.connection.getBalance(vaultKey);
+        expect(after - before).to.eq(10_000_000);
+      } finally {
+        await program.methods
+          .updateRegisterFee(ONE_SOL)
+          .accounts({})
+          .rpc();
+      }
+    });
+
+    it("withdraw_fees: admin can withdraw", async () => {
+      const vaultKey = feeVaultPDA();
+      const rentExempt = await provider.connection.getMinimumBalanceForRentExemption(0);
+      const vaultBalance = await provider.connection.getBalance(vaultKey);
+      const available = vaultBalance - rentExempt;
+
+      if (available > 0) {
+        const adminBefore = await provider.connection.getBalance(authority.publicKey);
+        await program.methods
+          .withdrawFees(new anchor.BN(available))
+          .accounts({})
+          .rpc();
+        const adminAfter = await provider.connection.getBalance(authority.publicKey);
+        const vaultAfter = await provider.connection.getBalance(vaultKey);
+        // Admin gained withdrawn amount (minus tx fee ~5000 lamports)
+        expect(adminAfter).to.be.greaterThan(adminBefore + available - 100_000);
+        // Vault is at rent-exempt minimum
+        expect(vaultAfter).to.eq(rentExempt);
+      }
+    });
+
+    it("withdraw_fees: rejects non-admin", async () => {
       const other = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(
+        other.publicKey,
+        web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(sig);
+
       try {
         await program.methods
-          .updateFeeRecipient(other.publicKey)
+          .withdrawFees(new anchor.BN(1))
           .accounts({ admin: other.publicKey })
           .signers([other])
           .rpc();
@@ -258,38 +290,22 @@ describe("nara-agent-registry", () => {
       }
     });
 
-    it("collects fee when fee_recipient differs from authority", async () => {
-      const recipient = Keypair.generate();
-      const sig = await provider.connection.requestAirdrop(
-        recipient.publicKey,
-        web3.LAMPORTS_PER_SOL
-      );
-      await provider.connection.confirmTransaction(sig);
-
-      const smallFee = new anchor.BN(10_000_000); // 0.01 SOL
-      await program.methods
-        .updateRegisterFee(smallFee)
-        .accounts({})
-        .rpc();
-      await program.methods
-        .updateFeeRecipient(recipient.publicKey)
-        .accounts({})
-        .rpc();
+    it("withdraw_fees: rejects insufficient balance", async () => {
+      const vaultKey = feeVaultPDA();
+      const vaultBalance = await provider.connection.getBalance(vaultKey);
+      const rentExempt = await provider.connection.getMinimumBalanceForRentExemption(0);
+      const tooMuch = vaultBalance - rentExempt + 1;
 
       try {
-        const before = await provider.connection.getBalance(recipient.publicKey);
-        await doRegisterAgent("fee-test-01", recipient.publicKey);
-        const after = await provider.connection.getBalance(recipient.publicKey);
-        expect(after - before).to.eq(10_000_000);
-      } finally {
         await program.methods
-          .updateRegisterFee(ONE_SOL)
+          .withdrawFees(new anchor.BN(tooMuch))
           .accounts({})
           .rpc();
-        await program.methods
-          .updateFeeRecipient(authority.publicKey)
-          .accounts({})
-          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include(
+          "InsufficientFeeVaultBalance"
+        );
       }
     });
   });
