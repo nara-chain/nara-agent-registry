@@ -6,7 +6,7 @@ use anchor_lang::prelude::*;
 #[repr(C)]
 pub struct ProgramConfig {
     pub admin: Pubkey,
-    pub fee_recipient: Pubkey,
+    pub fee_vault: Pubkey,
     pub point_mint: Pubkey,
     pub referee_mint: Pubkey,
     pub referee_activity_mint: Pubkey,
