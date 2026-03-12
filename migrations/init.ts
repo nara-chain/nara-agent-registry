@@ -63,7 +63,7 @@ async function main() {
     console.log("\nConfig already initialized:");
     console.log("  admin         :", cfg.admin.toBase58());
     console.log("  registerFee   :", cfg.registerFee.toString(), "lamports");
-    console.log("  feeRecipient  :", cfg.feeRecipient.toBase58());
+    console.log("  feeVault      :", cfg.feeVault.toBase58());
     return;
   }
 
@@ -79,7 +79,7 @@ async function main() {
   console.log("\nConfig initialized:");
   console.log("  admin         :", cfg.admin.toBase58());
   console.log("  registerFee   :", cfg.registerFee.toString(), "lamports");
-  console.log("  feeRecipient  :", cfg.feeRecipient.toBase58());
+  console.log("  feeVault      :", cfg.feeVault.toBase58());
 }
 
 main().catch((err) => {
