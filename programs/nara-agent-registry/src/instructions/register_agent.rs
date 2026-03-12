@@ -25,9 +25,9 @@ pub struct RegisterAgent<'info> {
     pub agent: AccountLoader<'info, AgentState>,
     #[account(seeds = [SEED_CONFIG], bump)]
     pub config: AccountLoader<'info, ProgramConfig>,
-    /// CHECK: must equal config.fee_recipient; validated in handler.
-    #[account(mut)]
-    pub fee_recipient: UncheckedAccount<'info>,
+    /// CHECK: Fee vault PDA; validated by seeds constraint.
+    #[account(mut, seeds = [SEED_FEE_VAULT], bump)]
+    pub fee_vault: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -35,22 +35,16 @@ pub fn register_agent(ctx: Context<RegisterAgent>, agent_id: String) -> Result<(
     validate_agent_id(&agent_id)?;
 
     let config = ctx.accounts.config.load()?;
-    require_keys_eq!(
-        ctx.accounts.fee_recipient.key(),
-        config.fee_recipient,
-        AgentRegistryError::InvalidFeeRecipient
-    );
-
     let fee = config.register_fee;
     drop(config);
 
-    if fee > 0 && ctx.accounts.fee_recipient.key() != ctx.accounts.authority.key() {
+    if fee > 0 {
         anchor_lang::system_program::transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
                 anchor_lang::system_program::Transfer {
                     from: ctx.accounts.authority.to_account_info(),
-                    to: ctx.accounts.fee_recipient.to_account_info(),
+                    to: ctx.accounts.fee_vault.to_account_info(),
                 },
             ),
             fee,
