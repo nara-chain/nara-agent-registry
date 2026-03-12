@@ -18,6 +18,10 @@ Replace the mutable `fee_recipient` external address in `ProgramConfig` with a p
 - **Type**: System account (holds SOL lamports)
 - **Defined in**: `seeds.rs` as `pub const SEED_FEE_VAULT: &[u8] = b"fee_vault";`
 
+**Distinction from treasury PDA**: The program has two SOL-holding PDAs with different roles:
+- `treasury` (`[b"treasury"]`): externally funded, disburses activity rewards to users
+- `fee_vault` (`[b"fee_vault"]`): accumulates registration fees from registrants, withdrawn by admin
+
 ### 2. ProgramConfig Change
 
 Rename field `fee_recipient: Pubkey` to `fee_vault: Pubkey`. Memory layout unchanged (same position, same type).
@@ -45,11 +49,21 @@ pub struct ProgramConfig {
 
 ### 3. init_config Changes
 
-Compute fee_vault PDA and store in config:
+Add `fee_vault` as an account in `InitConfig` so it gets created on-chain during initialization:
 
 ```rust
-config.fee_vault = Pubkey::find_program_address(&[SEED_FEE_VAULT], ctx.program_id).0;
+/// CHECK: Fee vault PDA for holding registration fees; validated by seeds constraint.
+#[account(mut, seeds = [SEED_FEE_VAULT], bump)]
+pub fee_vault: UncheckedAccount<'info>,
 ```
+
+Compute fee_vault PDA address and store in config:
+
+```rust
+config.fee_vault = ctx.accounts.fee_vault.key();
+```
+
+The fee_vault account does not need explicit `create_account` -- it receives lamports via `system_program::transfer` from registrants. The rent-exempt minimum for a 0-byte account (~890,880 lamports) is negligible and will be covered by the first registration fee.
 
 ### 4. Delete update_fee_recipient
 
@@ -62,16 +76,19 @@ Remove entirely:
 
 - Replace `fee_recipient` account with `fee_vault` account using seeds constraint:
   ```rust
+  /// CHECK: Fee vault PDA; validated by seeds constraint.
   #[account(mut, seeds = [SEED_FEE_VAULT], bump)]
   pub fee_vault: UncheckedAccount<'info>,
   ```
-- Remove `require_keys_eq!` check against `config.fee_recipient`
+- Remove `require_keys_eq!` check against `config.fee_recipient` (no longer needed -- seeds constraint guarantees the correct PDA)
+- Simplify transfer condition from `if fee > 0 && fee_recipient != authority` to `if fee > 0` (the PDA can never equal the authority, so the self-payment guard is unnecessary)
 - Transfer fee to `fee_vault` instead of `fee_recipient`
 
 ### 6. Modify register_agent_with_referral
 
 Same changes as `register_agent`:
-- `fee_recipient` account becomes `fee_vault` with seeds constraint
+- `fee_recipient` account becomes `fee_vault` with seeds constraint and `/// CHECK:` comment
+- Simplify transfer condition (remove self-payment guard)
 - System share of referral fee goes to `fee_vault`
 
 ### 7. New Instruction: withdraw_fees
@@ -83,7 +100,7 @@ pub fn withdraw_fees(ctx: Context<WithdrawFees>, amount: u64) -> Result<()>
 **Accounts**:
 - `admin: Signer` - must be config.admin
 - `config: AccountLoader<ProgramConfig>` - seeds = [SEED_CONFIG], has_one = admin
-- `fee_vault: UncheckedAccount` - seeds = [SEED_FEE_VAULT], mut
+- `fee_vault: UncheckedAccount` - seeds = [SEED_FEE_VAULT], mut, with `/// CHECK:` safety comment
 - `system_program: Program<System>`
 
 **Logic**:
@@ -121,4 +138,6 @@ pub fn withdraw_fees(ctx: Context<WithdrawFees>, amount: u64) -> Result<()>
 - `withdraw_fees`: admin withdraws specified amount, balance decreases correctly
 - `withdraw_fees`: non-admin caller is rejected with Unauthorized
 - `withdraw_fees`: amount exceeding available balance (minus rent-exempt) is rejected
+- `withdraw_fees`: withdraw when vault has exactly rent-exempt minimum (available = 0) is rejected
+- `withdraw_fees`: withdraw exact available balance succeeds (boundary test)
 - `update_fee_recipient` no longer exists in the program
