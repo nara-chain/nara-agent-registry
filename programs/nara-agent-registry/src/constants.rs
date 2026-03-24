@@ -61,3 +61,6 @@ pub const REFEREE_ACTIVITY_TOKEN_URI: &str = "https://nara.build/metadata/refere
 pub const MAX_TWITTER_USERNAME_LEN: usize = 32;
 pub const MAX_TWEET_URL_LEN: usize = 256;
 pub const UNBIND_TWITTER_FEE: u64 = 1_000_000_000;
+
+/// Tweet verification cooldown in seconds (24 hours).
+pub const TWEET_VERIFY_COOLDOWN: i64 = 86_400;

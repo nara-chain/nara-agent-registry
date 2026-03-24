@@ -1,7 +1,10 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::invoke_signed;
 use anchor_lang::solana_program::system_program as sol_system;
-use crate::state::TwitterQueue;
+
+/// Queue constants — both TwitterQueue and TweetVerifyQueue share the same layout.
+const QUEUE_HEADER: usize = 16; // 8 disc + 8 len
+const QUEUE_ENTRY: usize = 32;  // one Pubkey
 
 /// Create or resize a dynamic PDA and write discriminator + len-prefixed data.
 /// Used by set_bio and set_metadata.
@@ -254,14 +257,14 @@ pub fn create_token2022_mint<'a>(
     Ok(())
 }
 
-// ── Twitter verification queue ────────────────────────────────────────────
-// Layout: [8 disc][64 TwitterQueue struct][32*N Pubkeys]
-//   TwitterQueue::HEADER_SIZE = 72  (disc + struct)
-//   TwitterQueue::ENTRY_SIZE  = 32  (Pubkey)
-//   capacity = (data_len - HEADER_SIZE) / ENTRY_SIZE
+// ── Generic Pubkey queue ──────────────────────────────────────────────────
+// Layout: [8 disc][8 len (u64)][32*N Pubkeys]
+//   QUEUE_HEADER = 16  (disc + len)
+//   QUEUE_ENTRY  = 32  (Pubkey)
+//   capacity = (data_len - QUEUE_HEADER) / QUEUE_ENTRY
 //   When len == capacity the account is extended by one slot before writing.
 
-/// Append `entry` to the twitter verification queue PDA.
+/// Append `entry` to a Pubkey queue PDA.
 /// Creates the account (header-only, 0 capacity) on first call.
 /// Skips silently if `entry` is already present.
 /// Expands account data by one slot when at capacity.
@@ -272,10 +275,8 @@ pub fn queue_push<'a>(
     program_id: &Pubkey,
     seeds: &[&[u8]],
     entry: &Pubkey,
+    discriminator: &[u8],
 ) -> Result<()> {
-    let header = TwitterQueue::HEADER_SIZE;
-    let entry_sz = TwitterQueue::ENTRY_SIZE;
-
     if queue.lamports() == 0 {
         // First call: create header-only account (0 capacity, len=0).
         let (_, bump) = Pubkey::find_program_address(seeds, program_id);
@@ -284,7 +285,7 @@ pub fn queue_push<'a>(
         full_seeds.push(&bump_bytes);
         let signer_seeds: &[&[&[u8]]] = &[full_seeds.as_slice()];
 
-        let lamports = Rent::get()?.minimum_balance(header);
+        let lamports = Rent::get()?.minimum_balance(QUEUE_HEADER);
         anchor_lang::system_program::create_account(
             CpiContext::new_with_signer(
                 system_program.clone(),
@@ -295,25 +296,24 @@ pub fn queue_push<'a>(
                 signer_seeds,
             ),
             lamports,
-            header as u64,
+            QUEUE_HEADER as u64,
             program_id,
         )?;
-        // Write zero_copy discriminator; len field stays 0 (zeroed by allocator).
         let mut data = queue.try_borrow_mut_data()?;
-        data[0..8].copy_from_slice(&TwitterQueue::DISCRIMINATOR[..]);
+        data[0..8].copy_from_slice(discriminator);
     }
 
     // Read current len and capacity; deduplicate.
     let (len, capacity) = {
         let data = queue.try_borrow_data()?;
-        if data.len() < header || data[0..8] != TwitterQueue::DISCRIMINATOR[..] {
+        if data.len() < QUEUE_HEADER || data[0..8] != *discriminator {
             return Err(ProgramError::InvalidAccountData.into());
         }
         let len = u64::from_le_bytes(data[8..16].try_into().unwrap()) as usize;
-        let capacity = (data.len() - header) / entry_sz;
+        let capacity = (data.len() - QUEUE_HEADER) / QUEUE_ENTRY;
         for i in 0..len {
-            let off = header + i * entry_sz;
-            if data[off..off + entry_sz] == *entry.as_ref() {
+            let off = QUEUE_HEADER + i * QUEUE_ENTRY;
+            if data[off..off + QUEUE_ENTRY] == *entry.as_ref() {
                 return Ok(());
             }
         }
@@ -321,8 +321,7 @@ pub fn queue_push<'a>(
     };
 
     if len >= capacity {
-        // At capacity — expand by one slot.
-        let new_size = header + (len + 1) * entry_sz;
+        let new_size = QUEUE_HEADER + (len + 1) * QUEUE_ENTRY;
         queue.resize(new_size)?;
         let needed = Rent::get()?.minimum_balance(new_size);
         let current = queue.lamports();
@@ -340,40 +339,37 @@ pub fn queue_push<'a>(
         }
     }
 
-    // Write entry at position `len` and update the len field.
     let mut data = queue.try_borrow_mut_data()?;
-    let off = header + len * entry_sz;
-    data[off..off + entry_sz].copy_from_slice(entry.as_ref());
+    let off = QUEUE_HEADER + len * QUEUE_ENTRY;
+    data[off..off + QUEUE_ENTRY].copy_from_slice(entry.as_ref());
     data[8..16].copy_from_slice(&(len as u64 + 1).to_le_bytes());
 
     Ok(())
 }
 
-/// Remove `entry` from the twitter verification queue PDA (swap-and-pop).
+/// Remove `entry` from a Pubkey queue PDA (swap-and-pop).
 /// Shrinks the account by one slot and refunds excess rent to `recipient`.
 /// Silently no-ops if the queue doesn't exist or entry isn't found.
 pub fn queue_remove<'a>(
     queue: &AccountInfo<'a>,
     recipient: &AccountInfo<'a>,
     entry: &Pubkey,
+    discriminator: &[u8],
 ) -> Result<()> {
-    let header = TwitterQueue::HEADER_SIZE;
-    let entry_sz = TwitterQueue::ENTRY_SIZE;
-
     if queue.lamports() == 0 {
         return Ok(());
     }
 
     let (len, idx) = {
         let data = queue.try_borrow_data()?;
-        if data.len() < header || data[0..8] != TwitterQueue::DISCRIMINATOR[..] {
+        if data.len() < QUEUE_HEADER || data[0..8] != *discriminator {
             return Ok(());
         }
         let len = u64::from_le_bytes(data[8..16].try_into().unwrap()) as usize;
         let mut found = None;
         for i in 0..len {
-            let off = header + i * entry_sz;
-            if data[off..off + entry_sz] == *entry.as_ref() {
+            let off = QUEUE_HEADER + i * QUEUE_ENTRY;
+            if data[off..off + QUEUE_ENTRY] == *entry.as_ref() {
                 found = Some(i);
                 break;
             }
@@ -386,20 +382,18 @@ pub fn queue_remove<'a>(
         None => return Ok(()),
     };
 
-    // Swap-and-pop then update len.
     {
         let mut data = queue.try_borrow_mut_data()?;
         if idx != len - 1 {
-            let last_off = header + (len - 1) * entry_sz;
-            let idx_off = header + idx * entry_sz;
-            let last = data[last_off..last_off + entry_sz].to_vec();
-            data[idx_off..idx_off + entry_sz].copy_from_slice(&last);
+            let last_off = QUEUE_HEADER + (len - 1) * QUEUE_ENTRY;
+            let idx_off = QUEUE_HEADER + idx * QUEUE_ENTRY;
+            let last = data[last_off..last_off + QUEUE_ENTRY].to_vec();
+            data[idx_off..idx_off + QUEUE_ENTRY].copy_from_slice(&last);
         }
         data[8..16].copy_from_slice(&(len as u64 - 1).to_le_bytes());
     }
 
-    // Shrink account by one slot and refund rent.
-    let new_size = header + (len - 1) * entry_sz;
+    let new_size = QUEUE_HEADER + (len - 1) * QUEUE_ENTRY;
     queue.resize(new_size)?;
     let new_min = Rent::get()?.minimum_balance(new_size);
     let current = queue.lamports();

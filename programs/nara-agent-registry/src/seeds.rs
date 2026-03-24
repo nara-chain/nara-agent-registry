@@ -12,3 +12,5 @@ pub const SEED_TWITTER: &[u8] = b"twitter";
 pub const SEED_TWITTER_HANDLE: &[u8] = b"twitter_handle";
 pub const SEED_TWITTER_VERIFY_VAULT: &[u8] = b"twitter_verify_vault";
 pub const SEED_TWITTER_QUEUE: &[u8] = b"twitter_queue";
+pub const SEED_TWEET_VERIFY: &[u8] = b"tweet_verify";
+pub const SEED_TWEET_VERIFY_QUEUE: &[u8] = b"tweet_verify_queue";

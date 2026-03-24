@@ -1,12 +1,12 @@
 use anchor_lang::prelude::*;
-use crate::state::{ProgramConfig, AgentState, AgentTwitter, TwitterQueue};
+use crate::state::{ProgramConfig, AgentState, TweetVerify, TweetVerifyQueue};
 use crate::error::AgentRegistryError;
 use crate::seeds::*;
 use super::helpers::queue_remove;
 
 #[derive(Accounts)]
 #[instruction(agent_id: String)]
-pub struct RejectTwitter<'info> {
+pub struct RejectTweet<'info> {
     #[account(mut)]
     pub verifier: Signer<'info>,
     #[account(seeds = [SEED_CONFIG], bump)]
@@ -18,17 +18,17 @@ pub struct RejectTwitter<'info> {
     pub agent: AccountLoader<'info, AgentState>,
     #[account(
         mut,
-        seeds = [SEED_TWITTER, agent.key().as_ref()],
+        seeds = [SEED_TWEET_VERIFY, agent.key().as_ref()],
         bump,
     )]
-    pub twitter: AccountLoader<'info, AgentTwitter>,
-    /// CHECK: Global pending-verification queue PDA; managed manually.
-    #[account(mut, seeds = [SEED_TWITTER_QUEUE], bump)]
-    pub twitter_queue: UncheckedAccount<'info>,
+    pub tweet_verify: AccountLoader<'info, TweetVerify>,
+    /// CHECK: Tweet verify queue PDA; managed manually.
+    #[account(mut, seeds = [SEED_TWEET_VERIFY_QUEUE], bump)]
+    pub tweet_verify_queue: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
-pub fn reject_twitter(ctx: Context<RejectTwitter>, _agent_id: String) -> Result<()> {
+pub fn reject_tweet(ctx: Context<RejectTweet>, _agent_id: String) -> Result<()> {
     let config = ctx.accounts.config.load()?;
     require!(
         config.twitter_verifier != Pubkey::default(),
@@ -41,18 +41,18 @@ pub fn reject_twitter(ctx: Context<RejectTwitter>, _agent_id: String) -> Result<
     );
     drop(config);
 
-    let mut twitter = ctx.accounts.twitter.load_mut()?;
-    require!(twitter.status == 1, AgentRegistryError::TwitterNotPending);
-    twitter.status = 3; // Rejected
-    let twitter_key = ctx.accounts.twitter.key();
-    drop(twitter);
+    let mut tv = ctx.accounts.tweet_verify.load_mut()?;
+    require!(tv.status == 1, AgentRegistryError::TweetVerifyNotPending);
+    tv.status = 0; // Idle — no refund
+    let tv_key = ctx.accounts.tweet_verify.key();
+    drop(tv);
 
-    // Remove from pending-verification queue
+    // Remove from queue
     queue_remove(
-        &ctx.accounts.twitter_queue.to_account_info(),
+        &ctx.accounts.tweet_verify_queue.to_account_info(),
         &ctx.accounts.verifier.to_account_info(),
-        &twitter_key,
-        &TwitterQueue::DISCRIMINATOR,
+        &tv_key,
+        &TweetVerifyQueue::DISCRIMINATOR,
     )?;
 
     Ok(())

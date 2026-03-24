@@ -6,6 +6,8 @@ pub mod agent_twitter;
 pub mod memory_buffer;
 pub mod program_config;
 pub mod twitter_handle;
+pub mod tweet_verify;
+pub mod tweet_verify_queue;
 pub mod twitter_queue;
 
 pub use agent_bio::AgentBio;
@@ -16,4 +18,6 @@ pub use agent_twitter::AgentTwitter;
 pub use memory_buffer::MemoryBuffer;
 pub use program_config::ProgramConfig;
 pub use twitter_handle::TwitterHandle;
+pub use tweet_verify::TweetVerify;
+pub use tweet_verify_queue::TweetVerifyQueue;
 pub use twitter_queue::TwitterQueue;

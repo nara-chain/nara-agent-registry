@@ -3,14 +3,14 @@ use anchor_lang::solana_program::program::invoke_signed;
 use anchor_spl::token_2022::Token2022;
 use anchor_spl::token_interface::{Mint as MintInterface, TokenAccount as TokenAccountInterface};
 use anchor_spl::associated_token::AssociatedToken;
-use crate::state::{ProgramConfig, AgentState, AgentTwitter, TwitterHandle, TwitterQueue};
+use crate::state::{ProgramConfig, AgentState, TweetVerify, TweetVerifyQueue};
 use crate::error::AgentRegistryError;
 use crate::seeds::*;
 use super::helpers::queue_remove;
 
 #[derive(Accounts)]
-#[instruction(agent_id: String, username: String)]
-pub struct VerifyTwitter<'info> {
+#[instruction(agent_id: String)]
+pub struct ApproveTweet<'info> {
     #[account(mut)]
     pub verifier: Signer<'info>,
     #[account(seeds = [SEED_CONFIG], bump)]
@@ -22,19 +22,11 @@ pub struct VerifyTwitter<'info> {
     pub agent: AccountLoader<'info, AgentState>,
     #[account(
         mut,
-        seeds = [SEED_TWITTER, agent.key().as_ref()],
+        seeds = [SEED_TWEET_VERIFY, agent.key().as_ref()],
         bump,
     )]
-    pub twitter: AccountLoader<'info, AgentTwitter>,
-    #[account(
-        init,
-        payer = verifier,
-        space = 8 + std::mem::size_of::<TwitterHandle>(),
-        seeds = [SEED_TWITTER_HANDLE, username.as_bytes()],
-        bump,
-    )]
-    pub twitter_handle: AccountLoader<'info, TwitterHandle>,
-    /// CHECK: Agent authority, receives fee refund. Validated in handler against agent.authority.
+    pub tweet_verify: AccountLoader<'info, TweetVerify>,
+    /// CHECK: Agent authority, receives fee refund and rewards. Validated against agent.authority.
     #[account(mut)]
     pub authority: UncheckedAccount<'info>,
     /// CHECK: Twitter verify vault PDA; validated by seeds constraint.
@@ -58,13 +50,13 @@ pub struct VerifyTwitter<'info> {
     pub authority_point_account: InterfaceAccount<'info, TokenAccountInterface>,
     pub token_program: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
+    /// CHECK: Tweet verify queue PDA; managed manually.
+    #[account(mut, seeds = [SEED_TWEET_VERIFY_QUEUE], bump)]
+    pub tweet_verify_queue: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
-    /// CHECK: Global pending-verification queue PDA; managed manually.
-    #[account(mut, seeds = [SEED_TWITTER_QUEUE], bump)]
-    pub twitter_queue: UncheckedAccount<'info>,
 }
 
-pub fn verify_twitter(ctx: Context<VerifyTwitter>, _agent_id: String, username: String) -> Result<()> {
+pub fn approve_tweet(ctx: Context<ApproveTweet>, _agent_id: String) -> Result<()> {
     let config = ctx.accounts.config.load()?;
     // Verify caller is the twitter verifier
     require!(
@@ -78,8 +70,8 @@ pub fn verify_twitter(ctx: Context<VerifyTwitter>, _agent_id: String, username: 
     );
 
     let fee = config.twitter_verification_fee;
-    let reward = config.twitter_verification_reward;
-    let points = config.twitter_verification_points;
+    let reward = config.tweet_verify_reward;
+    let points = config.tweet_verify_points;
     drop(config);
 
     // Validate agent authority
@@ -91,36 +83,23 @@ pub fn verify_twitter(ctx: Context<VerifyTwitter>, _agent_id: String, username: 
     );
     drop(agent);
 
-    // Verify twitter status is Pending and username matches
-    let mut twitter = ctx.accounts.twitter.load_mut()?;
-    require!(twitter.status == 1, AgentRegistryError::TwitterNotPending);
+    // Verify status is Pending
+    let mut tv = ctx.accounts.tweet_verify.load_mut()?;
+    require!(tv.status == 1, AgentRegistryError::TweetVerifyNotPending);
 
-    // Verify the username param matches stored username
-    let stored_len = twitter.username_len as usize;
-    let stored_username = &twitter.username[..stored_len];
-    require!(
-        username.as_bytes() == stored_username,
-        AgentRegistryError::TwitterUsernameEmpty // reuse error - username mismatch
-    );
+    // Update state
+    tv.status = 0; // Idle
+    tv.last_rewarded_at = Clock::get()?.unix_timestamp;
+    let tv_key = ctx.accounts.tweet_verify.key();
+    drop(tv);
 
-    // Set verified
-    twitter.status = 2; // Verified
-    twitter.verified_at = Clock::get()?.unix_timestamp;
-    let twitter_key = ctx.accounts.twitter.key();
-    drop(twitter);
-
-    // Remove from pending-verification queue
+    // Remove from queue
     queue_remove(
-        &ctx.accounts.twitter_queue.to_account_info(),
+        &ctx.accounts.tweet_verify_queue.to_account_info(),
         &ctx.accounts.verifier.to_account_info(),
-        &twitter_key,
-        &TwitterQueue::DISCRIMINATOR,
+        &tv_key,
+        &TweetVerifyQueue::DISCRIMINATOR,
     )?;
-
-    // Init TwitterHandle (Anchor init constraint handles creation)
-    let mut handle = ctx.accounts.twitter_handle.load_init()?;
-    handle.agent = ctx.accounts.agent.key();
-    drop(handle);
 
     // Refund verification fee from twitter_verify_vault
     let vault_bump = ctx.bumps.twitter_verify_vault;

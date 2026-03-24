@@ -102,12 +102,37 @@ describe("nara-agent-registry", () => {
       program.programId
     )[0];
 
+  const tweetVerifyPDA = (agentKey: PublicKey): PublicKey =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("tweet_verify"), agentKey.toBuffer()],
+      program.programId
+    )[0];
+
+  const tweetVerifyQueuePDA = (): PublicKey =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("tweet_verify_queue")],
+      program.programId
+    )[0];
+
   /** Read the list of Pubkeys in the twitter verification queue PDA.
    *  Layout: [8 disc][64 TwitterQueue struct (len at offset 8)][32*N Pubkeys starting at 72]
    */
   const readTwitterQueue = async (): Promise<PublicKey[]> => {
     const QUEUE_HEADER = 16; // 8 disc + 8 struct (len: u64)
     const info = await provider.connection.getAccountInfo(twitterQueuePDA());
+    if (!info || info.data.length < QUEUE_HEADER) return [];
+    const len = Number(info.data.readBigUInt64LE(8));
+    const entries: PublicKey[] = [];
+    for (let i = 0; i < len; i++) {
+      const off = QUEUE_HEADER + i * 32;
+      entries.push(new PublicKey(info.data.slice(off, off + 32)));
+    }
+    return entries;
+  };
+
+  const readTweetVerifyQueue = async (): Promise<PublicKey[]> => {
+    const QUEUE_HEADER = 16;
+    const info = await provider.connection.getAccountInfo(tweetVerifyQueuePDA());
     if (!info || info.data.length < QUEUE_HEADER) return [];
     const len = Number(info.data.readBigUInt64LE(8));
     const entries: PublicKey[] = [];
@@ -356,8 +381,8 @@ describe("nara-agent-registry", () => {
     });
 
     describe("expand_config", () => {
-      // ProgramConfig struct = 288 bytes, + 8 discriminator = 296 bytes on-chain
-      const INITIAL_CONFIG_SIZE = 296;
+      // ProgramConfig struct = 544 bytes, + 8 discriminator = 552 bytes on-chain
+      const INITIAL_CONFIG_SIZE = 552;
       const EXTEND_SIZE = 128;
 
       it("expands account data by extend_size bytes", async () => {
@@ -1831,6 +1856,315 @@ describe("nara-agent-registry", () => {
 
         const vaultAfter = await provider.connection.getBalance(vaultKey);
         expect(vaultAfter).to.eq(rentExempt);
+      }
+    });
+  });
+
+  describe("tweet_verification", () => {
+    const TWEET_AGENT_ID = "tweet-verify-agent";
+    const TWEET_USERNAME = "tweetverifier";
+    const TWEET_URL = "https://x.com/tweetverifier/status/111222333";
+    const VERIFY_FEE = new anchor.BN(5_000_000); // 0.005 SOL
+    const TWEET_REWARD = new anchor.BN(10_000_000); // 0.01 SOL
+    const TWEET_POINTS = new anchor.BN(5);
+    let verifier: Keypair;
+
+    before(async () => {
+      // Register a new agent
+      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await doRegisterAgent(TWEET_AGENT_ID);
+      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+
+      // Set up verifier
+      verifier = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(verifier.publicKey, 10 * web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+      await program.methods.updateTwitterVerifier(verifier.publicKey).accounts({}).rpc();
+
+      // Set verification fee
+      await program.methods
+        .updateTwitterVerificationConfig(VERIFY_FEE, new anchor.BN(0), new anchor.BN(0))
+        .accounts({})
+        .rpc();
+
+      // Set tweet verify reward config
+      await program.methods
+        .updateTweetVerifyConfig(TWEET_REWARD, TWEET_POINTS)
+        .accounts({})
+        .rpc();
+
+      // Fund treasury for rewards
+      const treasuryKey = treasuryPDA();
+      const treasurySig = await provider.connection.requestAirdrop(treasuryKey, 2 * web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(treasurySig);
+
+      // Bind and verify twitter for the agent
+      const agentKey = agentPDA(TWEET_AGENT_ID);
+      await program.methods
+        .setTwitter(TWEET_AGENT_ID, TWEET_USERNAME, "https://x.com/tweetverifier/status/bind")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      await program.methods
+        .verifyTwitter(TWEET_AGENT_ID, TWEET_USERNAME)
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: authority.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+        })
+        .signers([verifier])
+        .rpc();
+
+      // Confirm twitter is verified
+      const twitterAcc = await program.account.agentTwitter.fetch(twitterPDA(agentKey));
+      expect(twitterAcc.status.toNumber()).to.eq(2);
+    });
+
+    it("update_tweet_verify_config: admin sets reward and points", async () => {
+      const cfg = await program.account.programConfig.fetch(configPDA());
+      expect(cfg.tweetVerifyReward.toNumber()).to.eq(TWEET_REWARD.toNumber());
+      expect(cfg.tweetVerifyPoints.toNumber()).to.eq(TWEET_POINTS.toNumber());
+    });
+
+    it("submit_tweet: submits tweet, pays fee, TweetVerify created", async () => {
+      const agentKey = agentPDA(TWEET_AGENT_ID);
+      const vaultBefore = await provider.connection.getBalance(twitterVerifyVaultPDA());
+
+      await program.methods
+        .submitTweet(TWEET_AGENT_ID, TWEET_USERNAME, TWEET_URL)
+        .accounts({
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          tweetVerifyQueue: tweetVerifyQueuePDA(),
+        })
+        .rpc();
+
+      // Fee paid to vault
+      const vaultAfter = await provider.connection.getBalance(twitterVerifyVaultPDA());
+      expect(vaultAfter - vaultBefore).to.eq(VERIFY_FEE.toNumber());
+
+      // TweetVerify PDA created with Pending status
+      const tvKey = tweetVerifyPDA(agentKey);
+      const tvAcc = await program.account.tweetVerify.fetch(tvKey);
+      expect(tvAcc.status.toNumber()).to.eq(1); // Pending
+      expect(tvAcc.submittedAt.toNumber()).to.be.greaterThan(0);
+      expect(
+        Buffer.from(tvAcc.tweetUrl.slice(0, Number(tvAcc.tweetUrlLen))).toString()
+      ).to.eq(TWEET_URL);
+
+      // Queue should contain TweetVerify PDA
+      const queue = await readTweetVerifyQueue();
+      expect(queue.some(k => k.equals(tvKey))).to.be.true;
+    });
+
+    it("submit_tweet: rejects when already pending", async () => {
+      try {
+        await program.methods
+          .submitTweet(TWEET_AGENT_ID, TWEET_USERNAME, "https://x.com/test/status/2")
+          .accounts({
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            tweetVerifyQueue: tweetVerifyQueuePDA(),
+          })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("TweetVerifyAlreadyPending");
+      }
+    });
+
+    it("submit_tweet: rejects username mismatch", async () => {
+      // Register another agent, verify twitter, then submit with wrong username
+      const otherAgentId = "tweet-verify-agent-2";
+      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await doRegisterAgent(otherAgentId);
+      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+
+      const otherUsername = "othertwitter";
+      await program.methods
+        .setTwitter(otherAgentId, otherUsername, "https://x.com/other/status/bind")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      await program.methods
+        .verifyTwitter(otherAgentId, otherUsername)
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: authority.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+        })
+        .signers([verifier])
+        .rpc();
+
+      try {
+        await program.methods
+          .submitTweet(otherAgentId, "wrong_username", "https://x.com/test/status/3")
+          .accounts({
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            tweetVerifyQueue: tweetVerifyQueuePDA(),
+          })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("TwitterUsernameMismatch");
+      }
+    });
+
+    it("approve_tweet: verifier approves, fee refunded, rewards issued", async () => {
+      const agentKey = agentPDA(TWEET_AGENT_ID);
+      const authorityBefore = await provider.connection.getBalance(authority.publicKey);
+      const pointsBefore = await getPointBalance(authority.publicKey);
+
+      await program.methods
+        .approveTweet(TWEET_AGENT_ID)
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: authority.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+          tweetVerifyQueue: tweetVerifyQueuePDA(),
+        })
+        .signers([verifier])
+        .rpc();
+
+      // TweetVerify: status=Idle, last_rewarded_at set
+      const tvAcc = await program.account.tweetVerify.fetch(tweetVerifyPDA(agentKey));
+      expect(tvAcc.status.toNumber()).to.eq(0); // Idle
+      expect(tvAcc.lastRewardedAt.toNumber()).to.be.greaterThan(0);
+
+      // Points minted
+      const pointsAfter = await getPointBalance(authority.publicKey);
+      expect(Number(pointsAfter - pointsBefore)).to.eq(TWEET_POINTS.toNumber());
+
+      // Queue empty
+      const queue = await readTweetVerifyQueue();
+      expect(queue.some(k => k.equals(tweetVerifyPDA(agentKey)))).to.be.false;
+    });
+
+    it("approve_tweet: rejects non-verifier", async () => {
+      // First submit a new tweet
+      await program.methods
+        .submitTweet("tweet-verify-agent-2", "othertwitter", "https://x.com/test/status/4")
+        .accounts({
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          tweetVerifyQueue: tweetVerifyQueuePDA(),
+        })
+        .rpc();
+
+      const other = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(other.publicKey, web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      try {
+        await program.methods
+          .approveTweet("tweet-verify-agent-2")
+          .accounts({
+            verifier: other.publicKey,
+            authority: authority.publicKey,
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            treasury: treasuryPDA(),
+            tweetVerifyQueue: tweetVerifyQueuePDA(),
+          })
+          .signers([other])
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("NotTwitterVerifier");
+      }
+    });
+
+    it("reject_tweet: verifier rejects, fee not refunded, status back to Idle", async () => {
+      // tweet-verify-agent-2 has a pending tweet from previous test
+      const agentKey = agentPDA("tweet-verify-agent-2");
+      const vaultBefore = await provider.connection.getBalance(twitterVerifyVaultPDA());
+
+      await program.methods
+        .rejectTweet("tweet-verify-agent-2")
+        .accounts({
+          verifier: verifier.publicKey,
+          tweetVerifyQueue: tweetVerifyQueuePDA(),
+        })
+        .signers([verifier])
+        .rpc();
+
+      const tvAcc = await program.account.tweetVerify.fetch(tweetVerifyPDA(agentKey));
+      expect(tvAcc.status.toNumber()).to.eq(0); // Idle
+
+      // Vault balance unchanged (fee not refunded)
+      const vaultAfter = await provider.connection.getBalance(twitterVerifyVaultPDA());
+      expect(vaultAfter).to.eq(vaultBefore);
+
+      // Queue should be empty
+      const queue = await readTweetVerifyQueue();
+      expect(queue.length).to.eq(0);
+    });
+
+    it("reject_tweet then resubmit: can resubmit immediately after rejection", async () => {
+      // tweet-verify-agent-2 was rejected, should be able to resubmit
+      await program.methods
+        .submitTweet("tweet-verify-agent-2", "othertwitter", "https://x.com/test/status/5")
+        .accounts({
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          tweetVerifyQueue: tweetVerifyQueuePDA(),
+        })
+        .rpc();
+
+      const agentKey = agentPDA("tweet-verify-agent-2");
+      const tvAcc = await program.account.tweetVerify.fetch(tweetVerifyPDA(agentKey));
+      expect(tvAcc.status.toNumber()).to.eq(1); // Pending again
+
+      // Clean up: reject so it doesn't interfere
+      await program.methods
+        .rejectTweet("tweet-verify-agent-2")
+        .accounts({
+          verifier: verifier.publicKey,
+          tweetVerifyQueue: tweetVerifyQueuePDA(),
+        })
+        .signers([verifier])
+        .rpc();
+    });
+
+    it("submit_tweet: rejects during cooldown period", async () => {
+      // tweet-verify-agent was approved earlier, so last_rewarded_at is recent
+      // Cooldown is 24 hours, so submitting again should fail
+      try {
+        await program.methods
+          .submitTweet(TWEET_AGENT_ID, TWEET_USERNAME, "https://x.com/test/status/cooldown")
+          .accounts({
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            tweetVerifyQueue: tweetVerifyQueuePDA(),
+          })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("TweetVerifyCooldown");
+      }
+    });
+
+    it("submit_tweet: rejects when twitter not verified", async () => {
+      // Register a new agent without verified twitter
+      const noTwitterAgent = "no-twitter-agent";
+      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await doRegisterAgent(noTwitterAgent);
+      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+
+      // Set twitter but don't verify — status=Pending(1), not Verified(2)
+      await program.methods
+        .setTwitter(noTwitterAgent, "unverified_user", "https://x.com/test/status/noverify")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      try {
+        await program.methods
+          .submitTweet(noTwitterAgent, "unverified_user", "https://x.com/test/status/6")
+          .accounts({
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            tweetVerifyQueue: tweetVerifyQueuePDA(),
+          })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("TwitterNotVerified");
       }
     });
   });

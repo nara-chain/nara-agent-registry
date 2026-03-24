@@ -22,5 +22,9 @@ pub struct ProgramConfig {
     pub twitter_verification_fee: u64,
     pub twitter_verification_reward: u64,
     pub twitter_verification_points: u64,
-    pub _reserved: [u8; 8],
+    pub tweet_verify_reward: u64,
+    pub tweet_verify_points: u64,
+    pub _reserved: [u8; 128],
+    pub _reserved2: [u8; 96],
+    pub _reserved3: [u8; 24],
 }

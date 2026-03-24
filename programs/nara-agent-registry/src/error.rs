@@ -80,4 +80,12 @@ pub enum AgentRegistryError {
     TwitterHandleAlreadyBound,
     #[msg("Twitter verify vault has insufficient balance")]
     InsufficientTwitterVerifyVaultBalance,
+    #[msg("Tweet verification is in cooldown period")]
+    TweetVerifyCooldown,
+    #[msg("Tweet verification is not in pending status")]
+    TweetVerifyNotPending,
+    #[msg("Tweet verification already pending")]
+    TweetVerifyAlreadyPending,
+    #[msg("Twitter username does not match verified account")]
+    TwitterUsernameMismatch,
 }

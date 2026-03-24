@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::state::{ProgramConfig, AgentState, AgentTwitter};
+use crate::state::{ProgramConfig, AgentState, AgentTwitter, TwitterQueue};
 use crate::error::AgentRegistryError;
 use crate::seeds::*;
 use crate::constants::*;
@@ -91,6 +91,7 @@ pub fn set_twitter(ctx: Context<SetTwitter>, _agent_id: String, username: String
         ctx.program_id,
         &[SEED_TWITTER_QUEUE],
         &twitter_key,
+        &TwitterQueue::DISCRIMINATOR,
     )?;
 
     Ok(())
