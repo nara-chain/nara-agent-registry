@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::invoke_signed;
 use anchor_lang::solana_program::system_program as sol_system;
+use crate::state::TwitterQueue;
 
 /// Create or resize a dynamic PDA and write discriminator + len-prefixed data.
 /// Used by set_bio and set_metadata.
@@ -249,6 +250,163 @@ pub fn create_token2022_mint<'a>(
         &[mint.clone(), config.clone(), mint_authority.clone()],
         mint_authority_seeds,
     )?;
+
+    Ok(())
+}
+
+// ── Twitter verification queue ────────────────────────────────────────────
+// Layout: [8 disc][64 TwitterQueue struct][32*N Pubkeys]
+//   TwitterQueue::HEADER_SIZE = 72  (disc + struct)
+//   TwitterQueue::ENTRY_SIZE  = 32  (Pubkey)
+//   capacity = (data_len - HEADER_SIZE) / ENTRY_SIZE
+//   When len == capacity the account is extended by one slot before writing.
+
+/// Append `entry` to the twitter verification queue PDA.
+/// Creates the account (header-only, 0 capacity) on first call.
+/// Skips silently if `entry` is already present.
+/// Expands account data by one slot when at capacity.
+pub fn queue_push<'a>(
+    queue: &AccountInfo<'a>,
+    payer: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    program_id: &Pubkey,
+    seeds: &[&[u8]],
+    entry: &Pubkey,
+) -> Result<()> {
+    let header = TwitterQueue::HEADER_SIZE;
+    let entry_sz = TwitterQueue::ENTRY_SIZE;
+
+    if queue.lamports() == 0 {
+        // First call: create header-only account (0 capacity, len=0).
+        let (_, bump) = Pubkey::find_program_address(seeds, program_id);
+        let bump_bytes = [bump];
+        let mut full_seeds = seeds.to_vec();
+        full_seeds.push(&bump_bytes);
+        let signer_seeds: &[&[&[u8]]] = &[full_seeds.as_slice()];
+
+        let lamports = Rent::get()?.minimum_balance(header);
+        anchor_lang::system_program::create_account(
+            CpiContext::new_with_signer(
+                system_program.clone(),
+                anchor_lang::system_program::CreateAccount {
+                    from: payer.clone(),
+                    to: queue.clone(),
+                },
+                signer_seeds,
+            ),
+            lamports,
+            header as u64,
+            program_id,
+        )?;
+        // Write zero_copy discriminator; len field stays 0 (zeroed by allocator).
+        let mut data = queue.try_borrow_mut_data()?;
+        data[0..8].copy_from_slice(&TwitterQueue::DISCRIMINATOR[..]);
+    }
+
+    // Read current len and capacity; deduplicate.
+    let (len, capacity) = {
+        let data = queue.try_borrow_data()?;
+        if data.len() < header || data[0..8] != TwitterQueue::DISCRIMINATOR[..] {
+            return Err(ProgramError::InvalidAccountData.into());
+        }
+        let len = u64::from_le_bytes(data[8..16].try_into().unwrap()) as usize;
+        let capacity = (data.len() - header) / entry_sz;
+        for i in 0..len {
+            let off = header + i * entry_sz;
+            if data[off..off + entry_sz] == *entry.as_ref() {
+                return Ok(());
+            }
+        }
+        (len, capacity)
+    };
+
+    if len >= capacity {
+        // At capacity — expand by one slot.
+        let new_size = header + (len + 1) * entry_sz;
+        queue.resize(new_size)?;
+        let needed = Rent::get()?.minimum_balance(new_size);
+        let current = queue.lamports();
+        if needed > current {
+            anchor_lang::system_program::transfer(
+                CpiContext::new(
+                    system_program.clone(),
+                    anchor_lang::system_program::Transfer {
+                        from: payer.clone(),
+                        to: queue.clone(),
+                    },
+                ),
+                needed - current,
+            )?;
+        }
+    }
+
+    // Write entry at position `len` and update the len field.
+    let mut data = queue.try_borrow_mut_data()?;
+    let off = header + len * entry_sz;
+    data[off..off + entry_sz].copy_from_slice(entry.as_ref());
+    data[8..16].copy_from_slice(&(len as u64 + 1).to_le_bytes());
+
+    Ok(())
+}
+
+/// Remove `entry` from the twitter verification queue PDA (swap-and-pop).
+/// Shrinks the account by one slot and refunds excess rent to `recipient`.
+/// Silently no-ops if the queue doesn't exist or entry isn't found.
+pub fn queue_remove<'a>(
+    queue: &AccountInfo<'a>,
+    recipient: &AccountInfo<'a>,
+    entry: &Pubkey,
+) -> Result<()> {
+    let header = TwitterQueue::HEADER_SIZE;
+    let entry_sz = TwitterQueue::ENTRY_SIZE;
+
+    if queue.lamports() == 0 {
+        return Ok(());
+    }
+
+    let (len, idx) = {
+        let data = queue.try_borrow_data()?;
+        if data.len() < header || data[0..8] != TwitterQueue::DISCRIMINATOR[..] {
+            return Ok(());
+        }
+        let len = u64::from_le_bytes(data[8..16].try_into().unwrap()) as usize;
+        let mut found = None;
+        for i in 0..len {
+            let off = header + i * entry_sz;
+            if data[off..off + entry_sz] == *entry.as_ref() {
+                found = Some(i);
+                break;
+            }
+        }
+        (len, found)
+    };
+
+    let idx = match idx {
+        Some(i) => i,
+        None => return Ok(()),
+    };
+
+    // Swap-and-pop then update len.
+    {
+        let mut data = queue.try_borrow_mut_data()?;
+        if idx != len - 1 {
+            let last_off = header + (len - 1) * entry_sz;
+            let idx_off = header + idx * entry_sz;
+            let last = data[last_off..last_off + entry_sz].to_vec();
+            data[idx_off..idx_off + entry_sz].copy_from_slice(&last);
+        }
+        data[8..16].copy_from_slice(&(len as u64 - 1).to_le_bytes());
+    }
+
+    // Shrink account by one slot and refund rent.
+    let new_size = header + (len - 1) * entry_sz;
+    queue.resize(new_size)?;
+    let new_min = Rent::get()?.minimum_balance(new_size);
+    let current = queue.lamports();
+    if current > new_min {
+        **queue.try_borrow_mut_lamports()? -= current - new_min;
+        **recipient.try_borrow_mut_lamports()? += current - new_min;
+    }
 
     Ok(())
 }

@@ -8,3 +8,7 @@ pub const SEED_REFEREE_ACTIVITY_MINT: &[u8] = b"referee_activity_mint";
 pub const SEED_MINT_AUTHORITY: &[u8] = b"mint_authority";
 pub const SEED_TREASURY: &[u8] = b"treasury";
 pub const SEED_FEE_VAULT: &[u8] = b"fee_vault";
+pub const SEED_TWITTER: &[u8] = b"twitter";
+pub const SEED_TWITTER_HANDLE: &[u8] = b"twitter_handle";
+pub const SEED_TWITTER_VERIFY_VAULT: &[u8] = b"twitter_verify_vault";
+pub const SEED_TWITTER_QUEUE: &[u8] = b"twitter_queue";

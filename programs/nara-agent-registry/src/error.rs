@@ -60,4 +60,24 @@ pub enum AgentRegistryError {
     ReferralAlreadySet,
     #[msg("Cannot set self as referral")]
     SelfReferral,
+    #[msg("Twitter verifier not configured")]
+    TwitterVerifierNotSet,
+    #[msg("Unauthorized: not the twitter verifier")]
+    NotTwitterVerifier,
+    #[msg("Twitter username too long")]
+    TwitterUsernameTooLong,
+    #[msg("Twitter username is empty")]
+    TwitterUsernameEmpty,
+    #[msg("Tweet URL too long")]
+    TweetUrlTooLong,
+    #[msg("Tweet URL is empty")]
+    TweetUrlEmpty,
+    #[msg("Twitter account is not in pending status")]
+    TwitterNotPending,
+    #[msg("Twitter account is not in verified status")]
+    TwitterNotVerified,
+    #[msg("Twitter handle already bound to another agent")]
+    TwitterHandleAlreadyBound,
+    #[msg("Twitter verify vault has insufficient balance")]
+    InsufficientTwitterVerifyVaultBalance,
 }

@@ -134,4 +134,41 @@ pub mod nara_agent_registry {
     pub fn withdraw_fees(ctx: Context<WithdrawFees>, amount: u64) -> Result<()> {
         instructions::withdraw_fees::withdraw_fees(ctx, amount)
     }
+
+    pub fn expand_config(ctx: Context<ExpandConfig>, extend_size: u64) -> Result<()> {
+        instructions::expand_config::expand_config(ctx, extend_size)
+    }
+
+    pub fn set_twitter(ctx: Context<SetTwitter>, agent_id: String, username: String, tweet_url: String) -> Result<()> {
+        instructions::set_twitter::set_twitter(ctx, agent_id, username, tweet_url)
+    }
+
+    pub fn verify_twitter(ctx: Context<VerifyTwitter>, agent_id: String, username: String) -> Result<()> {
+        instructions::verify_twitter::verify_twitter(ctx, agent_id, username)
+    }
+
+    pub fn reject_twitter(ctx: Context<RejectTwitter>, agent_id: String) -> Result<()> {
+        instructions::reject_twitter::reject_twitter(ctx, agent_id)
+    }
+
+    pub fn unbind_twitter(ctx: Context<UnbindTwitter>, agent_id: String, username: String) -> Result<()> {
+        instructions::unbind_twitter::unbind_twitter(ctx, agent_id, username)
+    }
+
+    pub fn update_twitter_verifier(ctx: Context<UpdateTwitterVerifier>, new_verifier: Pubkey) -> Result<()> {
+        instructions::update_twitter_verifier::update_twitter_verifier(ctx, new_verifier)
+    }
+
+    pub fn update_twitter_verification_config(
+        ctx: Context<UpdateTwitterVerificationConfig>,
+        fee: u64,
+        reward: u64,
+        points: u64,
+    ) -> Result<()> {
+        instructions::update_twitter_verification_config::update_twitter_verification_config(ctx, fee, reward, points)
+    }
+
+    pub fn withdraw_twitter_verify_fees(ctx: Context<WithdrawTwitterVerifyFees>, amount: u64) -> Result<()> {
+        instructions::withdraw_twitter_verify_fees::withdraw_twitter_verify_fees(ctx, amount)
+    }
 }

@@ -78,6 +78,52 @@ describe("nara-agent-registry", () => {
       program.programId
     )[0];
 
+  const twitterPDA = (agentKey: PublicKey): PublicKey =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("twitter"), agentKey.toBuffer()],
+      program.programId
+    )[0];
+
+  const twitterHandlePDA = (username: string): PublicKey =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("twitter_handle"), Buffer.from(username)],
+      program.programId
+    )[0];
+
+  const twitterVerifyVaultPDA = (): PublicKey =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("twitter_verify_vault")],
+      program.programId
+    )[0];
+
+  const twitterQueuePDA = (): PublicKey =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("twitter_queue")],
+      program.programId
+    )[0];
+
+  /** Read the list of Pubkeys in the twitter verification queue PDA.
+   *  Layout: [8 disc][64 TwitterQueue struct (len at offset 8)][32*N Pubkeys starting at 72]
+   */
+  const readTwitterQueue = async (): Promise<PublicKey[]> => {
+    const QUEUE_HEADER = 16; // 8 disc + 8 struct (len: u64)
+    const info = await provider.connection.getAccountInfo(twitterQueuePDA());
+    if (!info || info.data.length < QUEUE_HEADER) return [];
+    const len = Number(info.data.readBigUInt64LE(8));
+    const entries: PublicKey[] = [];
+    for (let i = 0; i < len; i++) {
+      const off = QUEUE_HEADER + i * 32;
+      entries.push(new PublicKey(info.data.slice(off, off + 32)));
+    }
+    return entries;
+  };
+
+  const treasuryPDA = (): PublicKey =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("treasury")],
+      program.programId
+    )[0];
+
   // ── Utility: parse agent_id from zero-copy [u8;32] + u32 len ────────────
   function parseAgentId(agent: any): string {
     return Buffer.from(agent.agentId.slice(0, agent.agentIdLen)).toString("utf8");
@@ -307,6 +353,127 @@ describe("nara-agent-registry", () => {
           "InsufficientFeeVaultBalance"
         );
       }
+    });
+
+    describe("expand_config", () => {
+      // ProgramConfig struct = 288 bytes, + 8 discriminator = 296 bytes on-chain
+      const INITIAL_CONFIG_SIZE = 296;
+      const EXTEND_SIZE = 128;
+
+      it("expands account data by extend_size bytes", async () => {
+        const config = configPDA();
+        const before = await provider.connection.getAccountInfo(config);
+        expect(before!.data.length).to.eq(INITIAL_CONFIG_SIZE);
+
+        await program.methods
+          .expandConfig(new anchor.BN(EXTEND_SIZE))
+          .accounts({})
+          .rpc();
+
+        const after = await provider.connection.getAccountInfo(config);
+        expect(after!.data.length).to.eq(INITIAL_CONFIG_SIZE + EXTEND_SIZE);
+      });
+
+      it("on-chain instructions execute correctly after expansion: set_twitter + verify_twitter", async () => {
+        const AGENT_ID = "expand-cfg-twitter-test";
+        const USERNAME = "expand_test_user";
+        const TWEET_URL = "https://x.com/expand_test_user/status/999";
+        const FEE = new anchor.BN(5_000_000); // 0.005 SOL
+
+        // Register a fresh agent (temporarily set fee=0)
+        await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+        await doRegisterAgent(AGENT_ID);
+        await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+
+        // Set up a local verifier
+        const expandVerifier = Keypair.generate();
+        const sig = await provider.connection.requestAirdrop(
+          expandVerifier.publicKey,
+          2 * web3.LAMPORTS_PER_SOL
+        );
+        await provider.connection.confirmTransaction(sig);
+
+        // Write twitter config fields on-chain (proves config writable after expansion)
+        await program.methods
+          .updateTwitterVerifier(expandVerifier.publicKey)
+          .accounts({})
+          .rpc();
+        await program.methods
+          .updateTwitterVerificationConfig(FEE, new anchor.BN(0), new anchor.BN(0))
+          .accounts({})
+          .rpc();
+
+        // Verify config fields read back correctly
+        const cfg = await program.account.programConfig.fetch(configPDA());
+        expect(cfg.twitterVerifier.toBase58()).to.eq(expandVerifier.publicKey.toBase58());
+        expect(cfg.twitterVerificationFee.toNumber()).to.eq(FEE.toNumber());
+
+        // set_twitter: agent pays fee into vault
+        const vaultBefore = await provider.connection.getBalance(twitterVerifyVaultPDA());
+        await program.methods
+          .setTwitter(AGENT_ID, USERNAME, TWEET_URL)
+          .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+          .rpc();
+        const vaultAfter = await provider.connection.getBalance(twitterVerifyVaultPDA());
+        expect(vaultAfter - vaultBefore).to.eq(FEE.toNumber());
+
+        const agentKey = agentPDA(AGENT_ID);
+        const twitterKey = twitterPDA(agentKey);
+        const pendingAcc = await program.account.agentTwitter.fetch(twitterKey);
+        expect(pendingAcc.status.toNumber()).to.eq(1); // Pending
+
+        // verify_twitter: verifier approves, fee refunded
+        await program.methods
+          .verifyTwitter(AGENT_ID, USERNAME)
+          .accounts({
+            verifier: expandVerifier.publicKey,
+            authority: authority.publicKey,
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            treasury: treasuryPDA(),
+          })
+          .signers([expandVerifier])
+          .rpc();
+
+        const twitterAcc = await program.account.agentTwitter.fetch(twitterKey);
+        expect(twitterAcc.status.toNumber()).to.eq(2); // Verified
+        expect(twitterAcc.verifiedAt.toNumber()).to.be.greaterThan(0);
+
+        // TwitterHandle PDA created, bound to correct agent
+        const handleAcc = await program.account.twitterHandle.fetch(twitterHandlePDA(USERNAME));
+        expect(handleAcc.agent.toBase58()).to.eq(agentPDA(AGENT_ID).toBase58());
+      });
+
+      it("rejects non-admin on expand_config", async () => {
+        const other = Keypair.generate();
+        const sig = await provider.connection.requestAirdrop(
+          other.publicKey,
+          web3.LAMPORTS_PER_SOL
+        );
+        await provider.connection.confirmTransaction(sig);
+
+        try {
+          await program.methods
+            .expandConfig(new anchor.BN(64))
+            .accounts({ admin: other.publicKey })
+            .signers([other])
+            .rpc();
+          expect.fail("expected error");
+        } catch (e: any) {
+          expect(e.error?.errorCode?.code ?? e.message).to.include("Unauthorized");
+        }
+      });
+
+      it("rejects extend_size = 0", async () => {
+        try {
+          await program.methods
+            .expandConfig(new anchor.BN(0))
+            .accounts({})
+            .rpc();
+          expect.fail("expected error");
+        } catch (e: any) {
+          expect(e.error?.errorCode?.code ?? e.message).to.include("Unauthorized");
+        }
+      });
     });
   });
 
@@ -1366,6 +1533,304 @@ describe("nara-agent-registry", () => {
         expect.fail("expected error");
       } catch (e: any) {
         expect(e.error?.errorCode?.code ?? e.message).to.include("Unauthorized");
+      }
+    });
+  });
+
+  // ── twitter_verification ─────────────────────────────────────────────────
+  describe("twitter_verification", () => {
+    const TWITTER_AGENT_ID = "twitter-agent-01";
+    const TWITTER_USERNAME = "naraproject";
+    const TWEET_URL = "https://x.com/naraproject/status/123456789";
+    const VERIFY_FEE = new anchor.BN(10_000_000); // 0.01 SOL for testing
+    let verifier: Keypair;
+
+    before(async () => {
+      // Register the test agent (fee=0 to avoid needing SOL for registration)
+      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await doRegisterAgent(TWITTER_AGENT_ID);
+      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+
+      // Set up verifier keypair
+      verifier = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(verifier.publicKey, 5 * web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      // Admin sets the twitter verifier
+      await program.methods.updateTwitterVerifier(verifier.publicKey).accounts({}).rpc();
+
+      // Admin sets verification fee
+      await program.methods
+        .updateTwitterVerificationConfig(VERIFY_FEE, new anchor.BN(0), new anchor.BN(0))
+        .accounts({})
+        .rpc();
+    });
+
+    it("update_twitter_verifier: admin sets verifier address", async () => {
+      const cfg = await program.account.programConfig.fetch(configPDA());
+      expect(cfg.twitterVerifier.toBase58()).to.eq(verifier.publicKey.toBase58());
+    });
+
+    it("update_twitter_verification_config: admin sets fee", async () => {
+      const cfg = await program.account.programConfig.fetch(configPDA());
+      expect(cfg.twitterVerificationFee.toNumber()).to.eq(VERIFY_FEE.toNumber());
+    });
+
+    it("set_twitter: agent sets username and tweet_url, pays fee", async () => {
+      const vaultKey = twitterVerifyVaultPDA();
+      const vaultBefore = await provider.connection.getBalance(vaultKey);
+
+      await program.methods
+        .setTwitter(TWITTER_AGENT_ID, TWITTER_USERNAME, TWEET_URL)
+        .accounts({
+          twitterVerifyVault: vaultKey,
+        })
+        .rpc();
+
+      const vaultAfter = await provider.connection.getBalance(vaultKey);
+      expect(vaultAfter - vaultBefore).to.eq(VERIFY_FEE.toNumber());
+
+      // Read the AgentTwitter account
+      const agentKey = agentPDA(TWITTER_AGENT_ID);
+      const twitterKey = twitterPDA(agentKey);
+      const twitterAcc = await program.account.agentTwitter.fetch(twitterKey);
+      expect(twitterAcc.status.toNumber()).to.eq(1); // Pending
+      expect(Buffer.from(twitterAcc.username.slice(0, Number(twitterAcc.usernameLen))).toString()).to.eq(TWITTER_USERNAME);
+      expect(Buffer.from(twitterAcc.tweetUrl.slice(0, Number(twitterAcc.tweetUrlLen))).toString()).to.eq(TWEET_URL);
+
+      // Queue should contain the AgentTwitter PDA
+      const queue = await readTwitterQueue();
+      expect(queue.some(k => k.equals(twitterKey))).to.be.true;
+    });
+
+    it("set_twitter: rejects non-authority", async () => {
+      const other = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(other.publicKey, web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      try {
+        await program.methods
+          .setTwitter(TWITTER_AGENT_ID, "other_user", "https://x.com/test/status/1")
+          .accounts({
+            authority: other.publicKey,
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+          })
+          .signers([other])
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("Unauthorized");
+      }
+    });
+
+    it("set_twitter: rejects empty username", async () => {
+      try {
+        await program.methods
+          .setTwitter(TWITTER_AGENT_ID, "", TWEET_URL)
+          .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("TwitterUsernameEmpty");
+      }
+    });
+
+    it("verify_twitter: verifier approves, fee refunded, TwitterHandle created", async () => {
+      const agentKey = agentPDA(TWITTER_AGENT_ID);
+      const authorityBefore = await provider.connection.getBalance(authority.publicKey);
+
+      await program.methods
+        .verifyTwitter(TWITTER_AGENT_ID, TWITTER_USERNAME)
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: authority.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+        })
+        .signers([verifier])
+        .rpc();
+
+      // Check status is Verified
+      const twitterKey = twitterPDA(agentKey);
+      const twitterAcc = await program.account.agentTwitter.fetch(twitterKey);
+      expect(twitterAcc.status.toNumber()).to.eq(2); // Verified
+      expect(twitterAcc.verifiedAt.toNumber()).to.be.greaterThan(0);
+
+      // Check TwitterHandle was created
+      const handleKey = twitterHandlePDA(TWITTER_USERNAME);
+      const handleAcc = await program.account.twitterHandle.fetch(handleKey);
+      expect(handleAcc.agent.toBase58()).to.eq(agentKey.toBase58());
+
+      // Check fee was refunded to authority
+      const authorityAfter = await provider.connection.getBalance(authority.publicKey);
+      expect(authorityAfter).to.be.greaterThan(authorityBefore - 100_000); // minus possible tx fees for other txs
+
+      // Queue should no longer contain this twitter PDA
+      const queue = await readTwitterQueue();
+      expect(queue.some(k => k.equals(twitterKey))).to.be.false;
+    });
+
+    it("verify_twitter: rejects non-verifier", async () => {
+      // Need a new agent in pending state for this test
+      const newAgentId = "twitter-agent-02";
+      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await doRegisterAgent(newAgentId);
+      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+
+      await program.methods
+        .setTwitter(newAgentId, "other_handle", "https://x.com/test/status/999")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      // Queue should contain agent-02's twitter PDA (queue length 1 after agent-01 was verified)
+      const agent02Twitter = twitterPDA(agentPDA(newAgentId));
+      const queueAfter02 = await readTwitterQueue();
+      expect(queueAfter02.length).to.eq(1);
+      expect(queueAfter02.some(k => k.equals(agent02Twitter))).to.be.true;
+
+      const other = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(other.publicKey, web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      try {
+        await program.methods
+          .verifyTwitter(newAgentId, "other_handle")
+          .accounts({
+            verifier: other.publicKey,
+            authority: authority.publicKey,
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            treasury: treasuryPDA(),
+          })
+          .signers([other])
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("NotTwitterVerifier");
+      }
+    });
+
+    it("verify_twitter: rejects duplicate twitter handle", async () => {
+      // twitter-agent-02 is pending with "other_handle", but let's try with TWITTER_USERNAME which is already verified
+      const newAgentId = "twitter-agent-03";
+      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await doRegisterAgent(newAgentId);
+      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+
+      await program.methods
+        .setTwitter(newAgentId, TWITTER_USERNAME, "https://x.com/test/status/dup")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      // Queue should now have 2 entries: agent-02 and agent-03
+      const agent02Twitter = twitterPDA(agentPDA("twitter-agent-02"));
+      const agent03Twitter = twitterPDA(agentPDA(newAgentId));
+      const queueAfter03 = await readTwitterQueue();
+      expect(queueAfter03.length).to.eq(2);
+      expect(queueAfter03.some(k => k.equals(agent02Twitter))).to.be.true;
+      expect(queueAfter03.some(k => k.equals(agent03Twitter))).to.be.true;
+
+      try {
+        await program.methods
+          .verifyTwitter(newAgentId, TWITTER_USERNAME)
+          .accounts({
+            verifier: verifier.publicKey,
+            authority: authority.publicKey,
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            treasury: treasuryPDA(),
+          })
+          .signers([verifier])
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        // TwitterHandle PDA already exists, init will fail
+        expect(e.toString()).to.include("already in use");
+      }
+    });
+
+    it("reject_twitter: verifier rejects, fee not refunded", async () => {
+      // Use twitter-agent-02 which is still pending
+      const agentId = "twitter-agent-02";
+      const agentKey = agentPDA(agentId);
+
+      await program.methods
+        .rejectTwitter(agentId)
+        .accounts({
+          verifier: verifier.publicKey,
+        })
+        .signers([verifier])
+        .rpc();
+
+      const twitterKey = twitterPDA(agentKey);
+      const twitterAcc = await program.account.agentTwitter.fetch(twitterKey);
+      expect(twitterAcc.status.toNumber()).to.eq(3); // Rejected
+
+      // agent-02 was at index 0, agent-03 at index 1 (len=2).
+      // swap-and-pop: agent-03 moves to index 0, len becomes 1.
+      const agent03Twitter = twitterPDA(agentPDA("twitter-agent-03"));
+      const queue = await readTwitterQueue();
+      expect(queue.length).to.eq(1, "queue should have 1 entry after rejecting agent-02");
+      expect(queue.some(k => k.equals(twitterKey))).to.be.false;    // agent-02 gone
+      expect(queue.some(k => k.equals(agent03Twitter))).to.be.true; // agent-03 survived swap
+    });
+
+    it("unbind_twitter: agent unbinds verified twitter, pays fee, PDAs closed", async () => {
+      const agentKey = agentPDA(TWITTER_AGENT_ID);
+      const twitterKey = twitterPDA(agentKey);
+      const handleKey = twitterHandlePDA(TWITTER_USERNAME);
+
+      // Verify accounts exist before unbind
+      const twitterBefore = await provider.connection.getAccountInfo(twitterKey);
+      expect(twitterBefore).to.not.be.null;
+      const handleBefore = await provider.connection.getAccountInfo(handleKey);
+      expect(handleBefore).to.not.be.null;
+
+      const vaultBefore = await provider.connection.getBalance(twitterVerifyVaultPDA());
+
+      await program.methods
+        .unbindTwitter(TWITTER_AGENT_ID, TWITTER_USERNAME)
+        .accounts({
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+        })
+        .rpc();
+
+      // Both accounts should be closed
+      const twitterAfter = await provider.connection.getAccountInfo(twitterKey);
+      expect(twitterAfter).to.be.null;
+      const handleAfter = await provider.connection.getAccountInfo(handleKey);
+      expect(handleAfter).to.be.null;
+
+      // Unbind fee went to vault
+      const vaultAfter = await provider.connection.getBalance(twitterVerifyVaultPDA());
+      expect(vaultAfter - vaultBefore).to.eq(1_000_000_000); // 1 NARA
+    });
+
+    it("unbind_twitter: after unbind, same username can be re-bound", async () => {
+      // Re-set twitter on the same agent (account was closed, so init again)
+      await program.methods
+        .setTwitter(TWITTER_AGENT_ID, TWITTER_USERNAME, "https://x.com/naraproject/status/newtweet")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      const agentKey = agentPDA(TWITTER_AGENT_ID);
+      const twitterKey = twitterPDA(agentKey);
+      const twitterAcc = await program.account.agentTwitter.fetch(twitterKey);
+      expect(twitterAcc.status.toNumber()).to.eq(1); // Pending again
+    });
+
+    it("withdraw_twitter_verify_fees: admin withdraws", async () => {
+      const vaultKey = twitterVerifyVaultPDA();
+      const rentExempt = await provider.connection.getMinimumBalanceForRentExemption(0);
+      const vaultBalance = await provider.connection.getBalance(vaultKey);
+      const available = vaultBalance - rentExempt;
+
+      if (available > 0) {
+        await program.methods
+          .withdrawTwitterVerifyFees(new anchor.BN(available))
+          .accounts({})
+          .rpc();
+
+        const vaultAfter = await provider.connection.getBalance(vaultKey);
+        expect(vaultAfter).to.eq(rentExempt);
       }
     });
   });

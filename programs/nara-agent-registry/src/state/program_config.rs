@@ -18,5 +18,9 @@ pub struct ProgramConfig {
     pub referral_register_points: u64,
     pub activity_reward: u64,
     pub referral_activity_reward: u64,
-    pub _reserved: [u8; 64],
+    pub twitter_verifier: Pubkey,
+    pub twitter_verification_fee: u64,
+    pub twitter_verification_reward: u64,
+    pub twitter_verification_points: u64,
+    pub _reserved: [u8; 8],
 }

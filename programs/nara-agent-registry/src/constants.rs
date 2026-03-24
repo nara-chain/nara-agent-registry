@@ -57,3 +57,7 @@ pub const REFEREE_ACTIVITY_TOKEN_SYMBOL: &str = "REFACT";
 
 /// Referee Activity token metadata URI.
 pub const REFEREE_ACTIVITY_TOKEN_URI: &str = "https://nara.build/metadata/referee-activity.json";
+
+pub const MAX_TWITTER_USERNAME_LEN: usize = 32;
+pub const MAX_TWEET_URL_LEN: usize = 256;
+pub const UNBIND_TWITTER_FEE: u64 = 1_000_000_000;
