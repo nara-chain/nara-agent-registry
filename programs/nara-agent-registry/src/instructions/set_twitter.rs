@@ -35,7 +35,7 @@ pub struct SetTwitter<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn set_twitter(ctx: Context<SetTwitter>, _agent_id: String, username: String, tweet_url: String) -> Result<()> {
+pub fn set_twitter(ctx: Context<SetTwitter>, agent_id: String, username: String, tweet_url: String) -> Result<()> {
     require!(!username.is_empty(), AgentRegistryError::TwitterUsernameEmpty);
     require!(username.len() <= MAX_TWITTER_USERNAME_LEN, AgentRegistryError::TwitterUsernameTooLong);
     require!(!tweet_url.is_empty(), AgentRegistryError::TweetUrlEmpty);

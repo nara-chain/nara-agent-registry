@@ -40,7 +40,7 @@ pub struct SubmitTweet<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn submit_tweet(ctx: Context<SubmitTweet>, _agent_id: String, username: String, tweet_url: String) -> Result<()> {
+pub fn submit_tweet(ctx: Context<SubmitTweet>, agent_id: String, username: String, tweet_url: String) -> Result<()> {
     require!(!tweet_url.is_empty(), AgentRegistryError::TweetUrlEmpty);
     require!(tweet_url.len() <= MAX_TWEET_URL_LEN, AgentRegistryError::TweetUrlTooLong);
 
