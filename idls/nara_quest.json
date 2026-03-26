@@ -8,6 +8,95 @@
   },
   "instructions": [
     {
+      "name": "adjust_free_stake",
+      "discriminator": [
+        21,
+        111,
+        164,
+        64,
+        220,
+        115,
+        26,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "stake_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  107,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user"
+        },
+        {
+          "name": "caller",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "delta",
+          "type": "i32"
+        },
+        {
+          "name": "reason",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "name": "create_question",
       "discriminator": [
         222,
@@ -22,7 +111,6 @@
       "accounts": [
         {
           "name": "game_config",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -93,7 +181,37 @@
           }
         },
         {
-          "name": "authority",
+          "name": "treasury",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  116,
+                  114,
+                  101,
+                  97,
+                  115,
+                  117,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "caller",
+          "docs": [
+            "Caller: either authority or quest_authority"
+          ],
           "writable": true,
           "signer": true
         },
@@ -119,10 +237,6 @@
         {
           "name": "deadline",
           "type": "i64"
-        },
-        {
-          "name": "reward_amount",
-          "type": "u64"
         },
         {
           "name": "difficulty",
@@ -192,6 +306,32 @@
           }
         },
         {
+          "name": "treasury",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  116,
+                  114,
+                  101,
+                  97,
+                  115,
+                  117,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "authority",
           "writable": true,
           "signer": true
@@ -202,6 +342,106 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "set_quest_authority",
+      "discriminator": [
+        19,
+        140,
+        189,
+        111,
+        121,
+        111,
+        118,
+        50
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_quest_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_quest_interval",
+      "discriminator": [
+        69,
+        227,
+        209,
+        29,
+        164,
+        111,
+        166,
+        41
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "min_quest_interval",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "set_reward_config",
@@ -254,6 +494,110 @@
         {
           "name": "max_reward_count",
           "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "set_reward_per_share",
+      "discriminator": [
+        163,
+        41,
+        94,
+        29,
+        221,
+        56,
+        112,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "reward_per_share",
+          "type": "u64"
+        },
+        {
+          "name": "extra_reward",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_stake_authority",
+      "discriminator": [
+        202,
+        75,
+        225,
+        146,
+        240,
+        65,
+        15,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "game_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_stake_authority",
+          "type": "pubkey"
         }
       ]
     },
@@ -1249,6 +1593,31 @@
       "code": 6012,
       "name": "InsufficientStake",
       "msg": "Stake does not meet dynamic requirement"
+    },
+    {
+      "code": 6013,
+      "name": "QuestIntervalTooShort",
+      "msg": "Quest interval too short"
+    },
+    {
+      "code": 6014,
+      "name": "InsufficientTreasury",
+      "msg": "Insufficient treasury balance"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidRewardPerShare",
+      "msg": "Invalid reward config: reward_per_share and extra_reward cannot both be 0"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidDelta",
+      "msg": "Delta must not be zero"
+    },
+    {
+      "code": 6017,
+      "name": "FreeCreditsOverflow",
+      "msg": "Free credits overflow"
     }
   ],
   "types": [
@@ -1314,11 +1683,35 @@
             "type": "i64"
           },
           {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "quest_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "min_quest_interval",
+            "type": "i64"
+          },
+          {
+            "name": "reward_per_share",
+            "type": "u64"
+          },
+          {
+            "name": "extra_reward",
+            "type": "u64"
+          },
+          {
+            "name": "stake_authority",
+            "type": "pubkey"
+          },
+          {
             "name": "_padding",
             "type": {
               "array": [
                 "u8",
-                64
+                32
               ]
             }
           }
@@ -1409,11 +1802,15 @@
             "type": "u64"
           },
           {
+            "name": "free_credits",
+            "type": "u32"
+          },
+          {
             "name": "_padding",
             "type": {
               "array": [
                 "u8",
-                64
+                60
               ]
             }
           }
