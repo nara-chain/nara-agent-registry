@@ -5,6 +5,8 @@ use anchor_lang::prelude::*;
 #[account(zero_copy)]
 #[repr(C)]
 pub struct TweetVerify {
+    pub agent_id_len: u64,
+    pub agent_id: [u8; 32],
     /// 0 = Idle, 1 = Pending
     pub status: u64,
     /// Unix timestamp when the tweet was submitted
@@ -15,5 +17,6 @@ pub struct TweetVerify {
     pub tweet_url_len: u64,
     /// Tweet URL (max 256 bytes)
     pub tweet_url: [u8; 256],
-    pub _reserved: [u8; 64],
+    pub _reserved: [u8; 128],
+    pub _reserved2: [u8; 128],
 }

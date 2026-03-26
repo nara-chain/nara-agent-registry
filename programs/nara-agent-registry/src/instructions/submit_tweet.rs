@@ -99,6 +99,9 @@ pub fn submit_tweet(ctx: Context<SubmitTweet>, _agent_id: String, username: Stri
     }
 
     // Update TweetVerify
+    tv.agent_id_len = agent_id.len() as u64;
+    tv.agent_id = [0u8; 32];
+    tv.agent_id[..agent_id.len()].copy_from_slice(agent_id.as_bytes());
     tv.status = 1; // Pending
     tv.submitted_at = Clock::get()?.unix_timestamp;
     tv.tweet_url_len = tweet_url.len() as u64;
