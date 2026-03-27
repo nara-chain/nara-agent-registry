@@ -1932,7 +1932,7 @@ describe("nara-agent-registry", () => {
       const vaultBefore = await provider.connection.getBalance(twitterVerifyVaultPDA());
 
       await program.methods
-        .submitTweet(TWEET_AGENT_ID, TWEET_USERNAME, TWEET_URL)
+        .submitTweet(TWEET_AGENT_ID, TWEET_URL)
         .accounts({
           twitterVerifyVault: twitterVerifyVaultPDA(),
           tweetVerifyQueue: tweetVerifyQueuePDA(),
@@ -1960,7 +1960,7 @@ describe("nara-agent-registry", () => {
     it("submit_tweet: rejects when already pending", async () => {
       try {
         await program.methods
-          .submitTweet(TWEET_AGENT_ID, TWEET_USERNAME, "https://x.com/test/status/2")
+          .submitTweet(TWEET_AGENT_ID, "https://x.com/test/status/2")
           .accounts({
             twitterVerifyVault: twitterVerifyVaultPDA(),
             tweetVerifyQueue: tweetVerifyQueuePDA(),
@@ -1972,8 +1972,8 @@ describe("nara-agent-registry", () => {
       }
     });
 
-    it("submit_tweet: rejects username mismatch", async () => {
-      // Register another agent, verify twitter, then submit with wrong username
+    it("submit_tweet: setup tweet-verify-agent-2 with verified twitter", async () => {
+      // Register another agent and verify twitter for later tests
       const otherAgentId = "tweet-verify-agent-2";
       await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
       await doRegisterAgent(otherAgentId);
@@ -1995,19 +1995,6 @@ describe("nara-agent-registry", () => {
         })
         .signers([verifier])
         .rpc();
-
-      try {
-        await program.methods
-          .submitTweet(otherAgentId, "wrong_username", "https://x.com/test/status/3")
-          .accounts({
-            twitterVerifyVault: twitterVerifyVaultPDA(),
-            tweetVerifyQueue: tweetVerifyQueuePDA(),
-          })
-          .rpc();
-        expect.fail("expected error");
-      } catch (e: any) {
-        expect(e.error?.errorCode?.code ?? e.message).to.include("TwitterUsernameMismatch");
-      }
     });
 
     it("approve_tweet: verifier approves, fee refunded, rewards issued", async () => {
@@ -2044,7 +2031,7 @@ describe("nara-agent-registry", () => {
     it("approve_tweet: rejects non-verifier", async () => {
       // First submit a new tweet
       await program.methods
-        .submitTweet("tweet-verify-agent-2", "othertwitter", "https://x.com/test/status/4")
+        .submitTweet("tweet-verify-agent-2", "https://x.com/test/status/4")
         .accounts({
           twitterVerifyVault: twitterVerifyVaultPDA(),
           tweetVerifyQueue: tweetVerifyQueuePDA(),
@@ -2102,7 +2089,7 @@ describe("nara-agent-registry", () => {
     it("reject_tweet then resubmit: can resubmit immediately after rejection", async () => {
       // tweet-verify-agent-2 was rejected, should be able to resubmit
       await program.methods
-        .submitTweet("tweet-verify-agent-2", "othertwitter", "https://x.com/test/status/5")
+        .submitTweet("tweet-verify-agent-2", "https://x.com/test/status/5")
         .accounts({
           twitterVerifyVault: twitterVerifyVaultPDA(),
           tweetVerifyQueue: tweetVerifyQueuePDA(),
@@ -2129,7 +2116,7 @@ describe("nara-agent-registry", () => {
       // Cooldown is 24 hours, so submitting again should fail
       try {
         await program.methods
-          .submitTweet(TWEET_AGENT_ID, TWEET_USERNAME, "https://x.com/test/status/cooldown")
+          .submitTweet(TWEET_AGENT_ID, "https://x.com/test/status/cooldown")
           .accounts({
             twitterVerifyVault: twitterVerifyVaultPDA(),
             tweetVerifyQueue: tweetVerifyQueuePDA(),
@@ -2156,7 +2143,7 @@ describe("nara-agent-registry", () => {
 
       try {
         await program.methods
-          .submitTweet(noTwitterAgent, "unverified_user", "https://x.com/test/status/6")
+          .submitTweet(noTwitterAgent, "https://x.com/test/status/6")
           .accounts({
             twitterVerifyVault: twitterVerifyVaultPDA(),
             tweetVerifyQueue: tweetVerifyQueuePDA(),

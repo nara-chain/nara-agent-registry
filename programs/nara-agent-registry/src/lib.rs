@@ -172,8 +172,8 @@ pub mod nara_agent_registry {
         instructions::withdraw_twitter_verify_fees::withdraw_twitter_verify_fees(ctx, amount)
     }
 
-    pub fn submit_tweet(ctx: Context<SubmitTweet>, agent_id: String, username: String, tweet_url: String) -> Result<()> {
-        instructions::submit_tweet::submit_tweet(ctx, agent_id, username, tweet_url)
+    pub fn submit_tweet(ctx: Context<SubmitTweet>, agent_id: String, tweet_url: String) -> Result<()> {
+        instructions::submit_tweet::submit_tweet(ctx, agent_id, tweet_url)
     }
 
     pub fn approve_tweet(ctx: Context<ApproveTweet>, agent_id: String) -> Result<()> {

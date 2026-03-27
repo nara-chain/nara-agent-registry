@@ -40,21 +40,13 @@ pub struct SubmitTweet<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn submit_tweet(ctx: Context<SubmitTweet>, agent_id: String, username: String, tweet_url: String) -> Result<()> {
+pub fn submit_tweet(ctx: Context<SubmitTweet>, agent_id: String, tweet_url: String) -> Result<()> {
     require!(!tweet_url.is_empty(), AgentRegistryError::TweetUrlEmpty);
     require!(tweet_url.len() <= MAX_TWEET_URL_LEN, AgentRegistryError::TweetUrlTooLong);
 
     // Verify agent has verified twitter
     let twitter = ctx.accounts.twitter.load()?;
     require!(twitter.status == 2, AgentRegistryError::TwitterNotVerified);
-
-    // Verify username matches stored twitter username
-    let stored_len = twitter.username_len as usize;
-    let stored_username = &twitter.username[..stored_len];
-    require!(
-        username.as_bytes() == stored_username,
-        AgentRegistryError::TwitterUsernameMismatch
-    );
     drop(twitter);
 
     // Load or init TweetVerify

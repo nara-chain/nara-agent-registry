@@ -86,6 +86,4 @@ pub enum AgentRegistryError {
     TweetVerifyNotPending,
     #[msg("Tweet verification already pending")]
     TweetVerifyAlreadyPending,
-    #[msg("Twitter username does not match verified account")]
-    TwitterUsernameMismatch,
 }
