@@ -70,7 +70,9 @@ pub fn set_twitter(ctx: Context<SetTwitter>, agent_id: String, username: String,
     let mut twitter = if is_new {
         ctx.accounts.twitter.load_init()?
     } else {
-        ctx.accounts.twitter.load_mut()?
+        let t = ctx.accounts.twitter.load_mut()?;
+        require!(t.status != 2, AgentRegistryError::TwitterAlreadyVerified);
+        t
     };
     twitter.agent_id_len = agent_id.len() as u64;
     twitter.agent_id = [0u8; 32];

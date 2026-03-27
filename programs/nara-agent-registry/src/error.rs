@@ -88,4 +88,6 @@ pub enum AgentRegistryError {
     TweetVerifyAlreadyPending,
     #[msg("Twitter handle is already bound to another agent")]
     TwitterHandleAlreadyTaken,
+    #[msg("Twitter is already verified, unbind first")]
+    TwitterAlreadyVerified,
 }
