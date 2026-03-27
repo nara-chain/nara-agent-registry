@@ -1767,8 +1767,8 @@ describe("nara-agent-registry", () => {
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
-        // TwitterHandle PDA already exists, init will fail
-        expect(e.toString()).to.include("already in use");
+        // TwitterHandle PDA exists and agent is non-zero (still bound)
+        expect(e.error?.errorCode?.code ?? e.toString()).to.include("TwitterHandleAlreadyTaken");
       }
     });
 
@@ -1798,7 +1798,7 @@ describe("nara-agent-registry", () => {
       expect(queue.some(k => k.equals(agent03Twitter))).to.be.true; // agent-03 survived swap
     });
 
-    it("unbind_twitter: agent unbinds verified twitter, pays fee, PDAs closed", async () => {
+    it("unbind_twitter: agent unbinds verified twitter, pays fee, TwitterHandle cleared", async () => {
       const agentKey = agentPDA(TWITTER_AGENT_ID);
       const twitterKey = twitterPDA(agentKey);
       const handleKey = twitterHandlePDA(TWITTER_USERNAME);
@@ -1818,28 +1818,83 @@ describe("nara-agent-registry", () => {
         })
         .rpc();
 
-      // Both accounts should be closed
+      // AgentTwitter should be closed
       const twitterAfter = await provider.connection.getAccountInfo(twitterKey);
       expect(twitterAfter).to.be.null;
+
+      // TwitterHandle should still exist but agent cleared
       const handleAfter = await provider.connection.getAccountInfo(handleKey);
-      expect(handleAfter).to.be.null;
+      expect(handleAfter).to.not.be.null;
+      const handleAcc = await program.account.twitterHandle.fetch(handleKey);
+      expect(handleAcc.agent.equals(web3.PublicKey.default)).to.be.true;
 
       // Unbind fee went to vault
       const vaultAfter = await provider.connection.getBalance(twitterVerifyVaultPDA());
       expect(vaultAfter - vaultBefore).to.eq(1_000_000_000); // 1 NARA
     });
 
-    it("unbind_twitter: after unbind, same username can be re-bound", async () => {
-      // Re-set twitter on the same agent (account was closed, so init again)
+    it("unbind_twitter: after unbind, same username can be re-bound to same agent", async () => {
       await program.methods
         .setTwitter(TWITTER_AGENT_ID, TWITTER_USERNAME, "https://x.com/naraproject/status/newtweet")
         .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
         .rpc();
 
+      // Verify and re-bind
+      await program.methods
+        .verifyTwitter(TWITTER_AGENT_ID, TWITTER_USERNAME)
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: authority.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+        })
+        .signers([verifier])
+        .rpc();
+
+      const handleKey = twitterHandlePDA(TWITTER_USERNAME);
+      const handleAcc = await program.account.twitterHandle.fetch(handleKey);
       const agentKey = agentPDA(TWITTER_AGENT_ID);
-      const twitterKey = twitterPDA(agentKey);
-      const twitterAcc = await program.account.agentTwitter.fetch(twitterKey);
-      expect(twitterAcc.status.toNumber()).to.eq(1); // Pending again
+      expect(handleAcc.agent.equals(agentKey)).to.be.true;
+
+      // Unbind again for next test
+      await program.methods
+        .unbindTwitter(TWITTER_AGENT_ID, TWITTER_USERNAME)
+        .accounts({
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+        })
+        .rpc();
+    });
+
+    it("unbind_twitter: after unbind, same username can be re-bound to different agent", async () => {
+      // Register a new agent
+      const newAgentId = "twitter-rebind-agent";
+      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await doRegisterAgent(newAgentId);
+      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+
+      // Set twitter on new agent with same username
+      await program.methods
+        .setTwitter(newAgentId, TWITTER_USERNAME, "https://x.com/naraproject/status/rebind")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      // Verify
+      await program.methods
+        .verifyTwitter(newAgentId, TWITTER_USERNAME)
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: authority.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+        })
+        .signers([verifier])
+        .rpc();
+
+      // TwitterHandle should point to new agent
+      const handleKey = twitterHandlePDA(TWITTER_USERNAME);
+      const handleAcc = await program.account.twitterHandle.fetch(handleKey);
+      const newAgentKey = agentPDA(newAgentId);
+      expect(handleAcc.agent.equals(newAgentKey)).to.be.true;
     });
 
     it("withdraw_twitter_verify_fees: admin withdraws", async () => {

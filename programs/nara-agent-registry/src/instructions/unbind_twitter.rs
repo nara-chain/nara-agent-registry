@@ -64,15 +64,13 @@ pub fn unbind_twitter(ctx: Context<UnbindTwitter>, _agent_id: String, _username:
         )?;
     }
 
-    // Close TwitterHandle account
-    let handle_info = ctx.accounts.twitter_handle.to_account_info();
-    let authority_info = ctx.accounts.authority.to_account_info();
-    **authority_info.lamports.borrow_mut() += handle_info.lamports();
-    **handle_info.lamports.borrow_mut() = 0;
-    handle_info.assign(&anchor_lang::system_program::ID);
-    handle_info.resize(0)?;
+    // Clear TwitterHandle agent (keep PDA alive to record history)
+    let mut handle = ctx.accounts.twitter_handle.load_mut()?;
+    handle.agent = Pubkey::default();
+    drop(handle);
 
     // Close AgentTwitter account
+    let authority_info = ctx.accounts.authority.to_account_info();
     let twitter_info = ctx.accounts.twitter.to_account_info();
     **authority_info.lamports.borrow_mut() += twitter_info.lamports();
     **twitter_info.lamports.borrow_mut() = 0;

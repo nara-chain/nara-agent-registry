@@ -27,7 +27,7 @@ pub struct VerifyTwitter<'info> {
     )]
     pub twitter: AccountLoader<'info, AgentTwitter>,
     #[account(
-        init,
+        init_if_needed,
         payer = verifier,
         space = 8 + std::mem::size_of::<TwitterHandle>(),
         seeds = [SEED_TWITTER_HANDLE, username.as_bytes()],
@@ -117,8 +117,24 @@ pub fn verify_twitter(ctx: Context<VerifyTwitter>, _agent_id: String, username: 
         &TwitterQueue::DISCRIMINATOR,
     )?;
 
-    // Init TwitterHandle (Anchor init constraint handles creation)
-    let mut handle = ctx.accounts.twitter_handle.load_init()?;
+    // Init or reuse TwitterHandle
+    let is_new = {
+        let acc_info = ctx.accounts.twitter_handle.to_account_info();
+        let data = acc_info.try_borrow_data()?;
+        data[..8] == [0u8; 8]
+    };
+    let mut handle = if is_new {
+        ctx.accounts.twitter_handle.load_init()?
+    } else {
+        let h = ctx.accounts.twitter_handle.load_mut()?;
+        // Only allow reuse if previously unbound (agent cleared)
+        require_keys_eq!(
+            h.agent,
+            Pubkey::default(),
+            AgentRegistryError::TwitterHandleAlreadyTaken
+        );
+        h
+    };
     handle.agent = ctx.accounts.agent.key();
     drop(handle);
 
