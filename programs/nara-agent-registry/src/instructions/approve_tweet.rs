@@ -3,13 +3,13 @@ use anchor_lang::solana_program::program::invoke_signed;
 use anchor_spl::token_2022::Token2022;
 use anchor_spl::token_interface::{Mint as MintInterface, TokenAccount as TokenAccountInterface};
 use anchor_spl::associated_token::AssociatedToken;
-use crate::state::{ProgramConfig, AgentState, TweetVerify, TweetVerifyQueue};
+use crate::state::{ProgramConfig, AgentState, TweetVerify, TweetVerifyQueue, TweetRecord};
 use crate::error::AgentRegistryError;
 use crate::seeds::*;
 use super::helpers::queue_remove;
 
 #[derive(Accounts)]
-#[instruction(agent_id: String)]
+#[instruction(agent_id: String, tweet_id: u128)]
 pub struct ApproveTweet<'info> {
     #[account(mut)]
     pub verifier: Signer<'info>,
@@ -26,6 +26,14 @@ pub struct ApproveTweet<'info> {
         bump,
     )]
     pub tweet_verify: AccountLoader<'info, TweetVerify>,
+    #[account(
+        init,
+        payer = verifier,
+        space = 8 + std::mem::size_of::<TweetRecord>(),
+        seeds = [SEED_TWEET_RECORD, &tweet_id.to_le_bytes()],
+        bump,
+    )]
+    pub tweet_record: AccountLoader<'info, TweetRecord>,
     /// CHECK: Agent authority, receives fee refund and rewards. Validated against agent.authority.
     #[account(mut)]
     pub authority: UncheckedAccount<'info>,
@@ -56,7 +64,7 @@ pub struct ApproveTweet<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn approve_tweet(ctx: Context<ApproveTweet>, _agent_id: String) -> Result<()> {
+pub fn approve_tweet(ctx: Context<ApproveTweet>, _agent_id: String, tweet_id: u128) -> Result<()> {
     let config = ctx.accounts.config.load()?;
     // Verify caller is the twitter verifier
     require!(
@@ -87,11 +95,21 @@ pub fn approve_tweet(ctx: Context<ApproveTweet>, _agent_id: String) -> Result<()
     let mut tv = ctx.accounts.tweet_verify.load_mut()?;
     require!(tv.status == 1, AgentRegistryError::TweetVerifyNotPending);
 
+    // Verify tweet_id matches stored value
+    require!(tv.tweet_id == tweet_id, AgentRegistryError::InvalidTweetUrlFormat);
+
     // Update state
     tv.status = 0; // Idle
     tv.last_rewarded_at = Clock::get()?.unix_timestamp;
     let tv_key = ctx.accounts.tweet_verify.key();
     drop(tv);
+
+    // Init TweetRecord to mark this tweet as approved
+    let mut record = ctx.accounts.tweet_record.load_init()?;
+    record.agent = ctx.accounts.agent.key();
+    record.approved_at = Clock::get()?.unix_timestamp;
+    record.tweet_id = tweet_id;
+    drop(record);
 
     // Remove from queue
     queue_remove(

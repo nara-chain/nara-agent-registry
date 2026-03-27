@@ -6,7 +6,7 @@ use crate::constants::*;
 use super::helpers::queue_push;
 
 #[derive(Accounts)]
-#[instruction(agent_id: String)]
+#[instruction(agent_id: String, tweet_id: u128)]
 pub struct SubmitTweet<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -37,12 +37,18 @@ pub struct SubmitTweet<'info> {
     /// CHECK: Tweet verify queue PDA; managed manually.
     #[account(mut, seeds = [SEED_TWEET_VERIFY_QUEUE], bump)]
     pub tweet_verify_queue: UncheckedAccount<'info>,
+    /// CHECK: TweetRecord PDA; must not exist (data_is_empty). Validated by seeds constraint.
+    #[account(
+        seeds = [SEED_TWEET_RECORD, &tweet_id.to_le_bytes()],
+        bump,
+        constraint = tweet_record.data_is_empty() @ AgentRegistryError::TweetAlreadyApproved,
+    )]
+    pub tweet_record: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
-pub fn submit_tweet(ctx: Context<SubmitTweet>, agent_id: String, tweet_url: String) -> Result<()> {
-    require!(!tweet_url.is_empty(), AgentRegistryError::TweetUrlEmpty);
-    require!(tweet_url.len() <= MAX_TWEET_URL_LEN, AgentRegistryError::TweetUrlTooLong);
+pub fn submit_tweet(ctx: Context<SubmitTweet>, agent_id: String, tweet_id: u128) -> Result<()> {
+    require!(tweet_id > 0, AgentRegistryError::InvalidTweetUrlFormat);
 
     // Verify agent has verified twitter
     let twitter = ctx.accounts.twitter.load()?;
@@ -96,9 +102,7 @@ pub fn submit_tweet(ctx: Context<SubmitTweet>, agent_id: String, tweet_url: Stri
     tv.agent_id[..agent_id.len()].copy_from_slice(agent_id.as_bytes());
     tv.status = 1; // Pending
     tv.submitted_at = Clock::get()?.unix_timestamp;
-    tv.tweet_url_len = tweet_url.len() as u64;
-    tv.tweet_url = [0u8; 256];
-    tv.tweet_url[..tweet_url.len()].copy_from_slice(tweet_url.as_bytes());
+    tv.tweet_id = tweet_id;
     let tv_key = ctx.accounts.tweet_verify.key();
     drop(tv);
 

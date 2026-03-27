@@ -90,4 +90,8 @@ pub enum AgentRegistryError {
     TwitterHandleAlreadyTaken,
     #[msg("Twitter is already verified, unbind first")]
     TwitterAlreadyVerified,
+    #[msg("Invalid tweet URL format")]
+    InvalidTweetUrlFormat,
+    #[msg("Tweet has already been approved")]
+    TweetAlreadyApproved,
 }

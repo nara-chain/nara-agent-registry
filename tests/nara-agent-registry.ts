@@ -114,6 +114,16 @@ describe("nara-agent-registry", () => {
       program.programId
     )[0];
 
+  const tweetRecordPDA = (tweetId: anchor.BN): PublicKey => {
+    const buf = Buffer.alloc(16);
+    buf.writeBigUInt64LE(BigInt(tweetId.toString()) & BigInt("0xFFFFFFFFFFFFFFFF"), 0);
+    buf.writeBigUInt64LE(BigInt(tweetId.toString()) >> BigInt(64), 8);
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("tweet_record"), buf],
+      program.programId
+    )[0];
+  };
+
   /** Read the list of Pubkeys in the twitter verification queue PDA.
    *  Layout: [8 disc][64 TwitterQueue struct (len at offset 8)][32*N Pubkeys starting at 72]
    */
@@ -1918,7 +1928,7 @@ describe("nara-agent-registry", () => {
   describe("tweet_verification", () => {
     const TWEET_AGENT_ID = "tweet-verify-agent";
     const TWEET_USERNAME = "tweetverifier";
-    const TWEET_URL = "https://x.com/tweetverifier/status/111222333";
+    const TWEET_ID = new anchor.BN("111222333");
     const VERIFY_FEE = new anchor.BN(5_000_000); // 0.005 SOL
     const TWEET_REWARD = new anchor.BN(10_000_000); // 0.01 SOL
     const TWEET_POINTS = new anchor.BN(5);
@@ -1987,10 +1997,11 @@ describe("nara-agent-registry", () => {
       const vaultBefore = await provider.connection.getBalance(twitterVerifyVaultPDA());
 
       await program.methods
-        .submitTweet(TWEET_AGENT_ID, TWEET_URL)
+        .submitTweet(TWEET_AGENT_ID, TWEET_ID)
         .accounts({
           twitterVerifyVault: twitterVerifyVaultPDA(),
           tweetVerifyQueue: tweetVerifyQueuePDA(),
+          tweetRecord: tweetRecordPDA(TWEET_ID),
         })
         .rpc();
 
@@ -2003,9 +2014,7 @@ describe("nara-agent-registry", () => {
       const tvAcc = await program.account.tweetVerify.fetch(tvKey);
       expect(tvAcc.status.toNumber()).to.eq(1); // Pending
       expect(tvAcc.submittedAt.toNumber()).to.be.greaterThan(0);
-      expect(
-        Buffer.from(tvAcc.tweetUrl.slice(0, Number(tvAcc.tweetUrlLen))).toString()
-      ).to.eq(TWEET_URL);
+      expect(tvAcc.tweetId.toString()).to.eq(TWEET_ID.toString());
 
       // Queue should contain TweetVerify PDA
       const queue = await readTweetVerifyQueue();
@@ -2015,10 +2024,11 @@ describe("nara-agent-registry", () => {
     it("submit_tweet: rejects when already pending", async () => {
       try {
         await program.methods
-          .submitTweet(TWEET_AGENT_ID, "https://x.com/test/status/2")
+          .submitTweet(TWEET_AGENT_ID, new anchor.BN("999888777"))
           .accounts({
             twitterVerifyVault: twitterVerifyVaultPDA(),
             tweetVerifyQueue: tweetVerifyQueuePDA(),
+            tweetRecord: tweetRecordPDA(new anchor.BN("999888777")),
           })
           .rpc();
         expect.fail("expected error");
@@ -2058,7 +2068,7 @@ describe("nara-agent-registry", () => {
       const pointsBefore = await getPointBalance(authority.publicKey);
 
       await program.methods
-        .approveTweet(TWEET_AGENT_ID)
+        .approveTweet(TWEET_AGENT_ID, TWEET_ID)
         .accounts({
           verifier: verifier.publicKey,
           authority: authority.publicKey,
@@ -2081,15 +2091,23 @@ describe("nara-agent-registry", () => {
       // Queue empty
       const queue = await readTweetVerifyQueue();
       expect(queue.some(k => k.equals(tweetVerifyPDA(agentKey)))).to.be.false;
+
+      // TweetRecord PDA created
+      const recordAcc = await program.account.tweetRecord.fetch(tweetRecordPDA(TWEET_ID));
+      expect(recordAcc.agent.equals(agentKey)).to.be.true;
+      expect(recordAcc.approvedAt.toNumber()).to.be.greaterThan(0);
+      expect(recordAcc.tweetId.toString()).to.eq(TWEET_ID.toString());
     });
 
     it("approve_tweet: rejects non-verifier", async () => {
       // First submit a new tweet
+      const tweetId4 = new anchor.BN("4444444444");
       await program.methods
-        .submitTweet("tweet-verify-agent-2", "https://x.com/test/status/4")
+        .submitTweet("tweet-verify-agent-2", tweetId4)
         .accounts({
           twitterVerifyVault: twitterVerifyVaultPDA(),
           tweetVerifyQueue: tweetVerifyQueuePDA(),
+          tweetRecord: tweetRecordPDA(tweetId4),
         })
         .rpc();
 
@@ -2099,7 +2117,7 @@ describe("nara-agent-registry", () => {
 
       try {
         await program.methods
-          .approveTweet("tweet-verify-agent-2")
+          .approveTweet("tweet-verify-agent-2", tweetId4)
           .accounts({
             verifier: other.publicKey,
             authority: authority.publicKey,
@@ -2143,11 +2161,13 @@ describe("nara-agent-registry", () => {
 
     it("reject_tweet then resubmit: can resubmit immediately after rejection", async () => {
       // tweet-verify-agent-2 was rejected, should be able to resubmit
+      const tweetId5 = new anchor.BN("5555555555");
       await program.methods
-        .submitTweet("tweet-verify-agent-2", "https://x.com/test/status/5")
+        .submitTweet("tweet-verify-agent-2", tweetId5)
         .accounts({
           twitterVerifyVault: twitterVerifyVaultPDA(),
           tweetVerifyQueue: tweetVerifyQueuePDA(),
+          tweetRecord: tweetRecordPDA(tweetId5),
         })
         .rpc();
 
@@ -2171,10 +2191,11 @@ describe("nara-agent-registry", () => {
       // Cooldown is 24 hours, so submitting again should fail
       try {
         await program.methods
-          .submitTweet(TWEET_AGENT_ID, "https://x.com/test/status/cooldown")
+          .submitTweet(TWEET_AGENT_ID, new anchor.BN("7777777777"))
           .accounts({
             twitterVerifyVault: twitterVerifyVaultPDA(),
             tweetVerifyQueue: tweetVerifyQueuePDA(),
+            tweetRecord: tweetRecordPDA(new anchor.BN("7777777777")),
           })
           .rpc();
         expect.fail("expected error");
@@ -2192,21 +2213,55 @@ describe("nara-agent-registry", () => {
 
       // Set twitter but don't verify — status=Pending(1), not Verified(2)
       await program.methods
-        .setTwitter(noTwitterAgent, "unverified_user", "https://x.com/test/status/noverify")
+        .setTwitter(noTwitterAgent, "unverified_user", "https://x.com/unverified_user/status/8888888888")
         .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
         .rpc();
 
       try {
         await program.methods
-          .submitTweet(noTwitterAgent, "https://x.com/test/status/6")
+          .submitTweet(noTwitterAgent, new anchor.BN("6666666666"))
           .accounts({
             twitterVerifyVault: twitterVerifyVaultPDA(),
             tweetVerifyQueue: tweetVerifyQueuePDA(),
+            tweetRecord: tweetRecordPDA(new anchor.BN("6666666666")),
           })
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
         expect(e.error?.errorCode?.code ?? e.message).to.include("TwitterNotVerified");
+      }
+    });
+
+    it("submit_tweet: rejects already approved tweet", async () => {
+      // TWEET_ID was already approved earlier, try submitting it on agent-2
+      try {
+        await program.methods
+          .submitTweet("tweet-verify-agent-2", TWEET_ID)
+          .accounts({
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            tweetVerifyQueue: tweetVerifyQueuePDA(),
+            tweetRecord: tweetRecordPDA(TWEET_ID as anchor.BN),
+          })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("TweetAlreadyApproved");
+      }
+    });
+
+    it("submit_tweet: rejects zero tweet_id", async () => {
+      try {
+        await program.methods
+          .submitTweet("tweet-verify-agent-2", new anchor.BN(0))
+          .accounts({
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            tweetVerifyQueue: tweetVerifyQueuePDA(),
+            tweetRecord: tweetRecordPDA(new anchor.BN(0)),
+          })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("InvalidTweetUrlFormat");
       }
     });
   });
