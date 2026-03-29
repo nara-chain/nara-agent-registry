@@ -8,6 +8,18 @@ use crate::error::AgentRegistryError;
 use crate::seeds::*;
 use super::helpers::queue_remove;
 
+#[event]
+pub struct TwitterBindResult {
+    pub agent_id: String,
+    pub authority: Pubkey,
+    pub username: String,
+    pub approved: bool,
+    pub fee_refunded: u64,
+    pub reward: u64,
+    pub points: u64,
+    pub timestamp: i64,
+}
+
 #[derive(Accounts)]
 #[instruction(agent_id: String, username: String)]
 pub struct VerifyTwitter<'info> {
@@ -207,6 +219,19 @@ pub fn verify_twitter(ctx: Context<VerifyTwitter>, _agent_id: String, username: 
             authority_seeds,
         )?;
     }
+
+    msg!("verify_twitter: agent={}, username={}, approved=true, fee_refunded={}, reward={}, points={}", _agent_id, username, fee, reward, points);
+
+    emit!(TwitterBindResult {
+        agent_id: _agent_id,
+        authority: ctx.accounts.authority.key(),
+        username,
+        approved: true,
+        fee_refunded: fee,
+        reward,
+        points,
+        timestamp: Clock::get()?.unix_timestamp,
+    });
 
     Ok(())
 }

@@ -5,6 +5,16 @@ use crate::seeds::*;
 use crate::constants::*;
 use super::helpers::{queue_push};
 
+#[event]
+pub struct TwitterBindRequested {
+    pub agent_id: String,
+    pub authority: Pubkey,
+    pub username: String,
+    pub fee: u64,
+    pub is_first_bind: bool,
+    pub timestamp: i64,
+}
+
 #[derive(Accounts)]
 #[instruction(agent_id: String)]
 pub struct SetTwitter<'info> {
@@ -98,6 +108,17 @@ pub fn set_twitter(ctx: Context<SetTwitter>, agent_id: String, username: String,
         &twitter_key,
         &TwitterQueue::DISCRIMINATOR,
     )?;
+
+    msg!("set_twitter: agent={}, username={}, fee={}, first_bind={}", agent_id, username, fee, is_new);
+
+    emit!(TwitterBindRequested {
+        agent_id,
+        authority: ctx.accounts.authority.key(),
+        username,
+        fee,
+        is_first_bind: is_new,
+        timestamp: Clock::get()?.unix_timestamp,
+    });
 
     Ok(())
 }
