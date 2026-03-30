@@ -1,11 +1,23 @@
-/// Minimum agent ID length in bytes.
-pub const MIN_AGENT_ID_LEN: usize = 5;
+/// Minimum agent ID length in bytes (shorter IDs require admin).
+pub const MIN_AGENT_ID_LEN: usize = 1;
+
+/// Agent ID length threshold: <= this requires admin to register.
+pub const ADMIN_ONLY_AGENT_ID_LEN: usize = 4;
 
 /// Maximum agent ID length in bytes (must fit in [u8; 32]).
 pub const MAX_AGENT_ID_LEN: usize = 32;
 
-/// Default registration fee in lamports (1 NARA).
+/// Default registration fee in lamports for 8+ char IDs (1 NARA).
 pub const DEFAULT_REGISTER_FEE: u64 = 1_000_000_000;
+
+/// Default registration fee for 7-char IDs (1 NARA).
+pub const DEFAULT_REGISTER_FEE_7: u64 = 1_000_000_000;
+
+/// Default registration fee for 6-char IDs (10 NARA).
+pub const DEFAULT_REGISTER_FEE_6: u64 = 10_000_000_000;
+
+/// Default registration fee for 5-char IDs (100 NARA).
+pub const DEFAULT_REGISTER_FEE_5: u64 = 100_000_000_000;
 
 /// Default points awarded to the agent itself per valid quest.
 pub const DEFAULT_POINTS_SELF: u64 = 10;
@@ -13,11 +25,11 @@ pub const DEFAULT_POINTS_SELF: u64 = 10;
 /// Default points awarded to the referral agent per valid quest.
 pub const DEFAULT_POINTS_REFERRAL: u64 = 1;
 
-/// Default registration fee with referral (0.5 NARA).
-pub const DEFAULT_REFERRAL_REGISTER_FEE: u64 = 500_000_000;
+/// Default referral discount in basis points (50% = 5000 bps).
+pub const DEFAULT_REFERRAL_DISCOUNT_BPS: u64 = 5000;
 
-/// Default referral's share of the referral registration fee (0.25 NARA).
-pub const DEFAULT_REFERRAL_FEE_SHARE: u64 = 250_000_000;
+/// Default referral share of registration fee in basis points (50% of discounted fee).
+pub const DEFAULT_REFERRAL_SHARE_BPS: u64 = 5000;
 
 /// Default points awarded to referral agent on registration.
 pub const DEFAULT_REFERRAL_REGISTER_POINTS: u64 = 10;

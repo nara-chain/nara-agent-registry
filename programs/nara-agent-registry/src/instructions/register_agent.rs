@@ -5,7 +5,7 @@ use anchor_spl::token_interface::{Mint as MintInterface, TokenAccount as TokenAc
 use anchor_spl::associated_token::AssociatedToken;
 use crate::state::{AgentState, ProgramConfig};
 use crate::error::AgentRegistryError;
-use crate::constants::{MIN_AGENT_ID_LEN, MAX_AGENT_ID_LEN};
+use crate::constants::{MIN_AGENT_ID_LEN, MAX_AGENT_ID_LEN, ADMIN_ONLY_AGENT_ID_LEN};
 use crate::seeds::*;
 
 // ── Direct registration (no referral) ────────────────────────────────────
@@ -32,10 +32,9 @@ pub struct RegisterAgent<'info> {
 }
 
 pub fn register_agent(ctx: Context<RegisterAgent>, agent_id: String) -> Result<()> {
-    validate_agent_id(&agent_id)?;
-
     let config = ctx.accounts.config.load()?;
-    let fee = config.register_fee;
+    validate_agent_id(&agent_id, &ctx.accounts.authority.key(), config.admin)?;
+    let fee = get_register_fee(&config, agent_id.len());
     drop(config);
 
     if fee > 0 {
@@ -109,14 +108,25 @@ pub struct RegisterAgentWithReferral<'info> {
 }
 
 pub fn register_agent_with_referral(ctx: Context<RegisterAgentWithReferral>, agent_id: String) -> Result<()> {
-    validate_agent_id(&agent_id)?;
-
     let config = ctx.accounts.config.load()?;
-    let fee = config.referral_register_fee;
-    let referral_share = config.referral_fee_share;
-    let system_share = fee.saturating_sub(referral_share);
+    validate_agent_id(&agent_id, &ctx.accounts.authority.key(), config.admin)?;
+    let base_fee = get_register_fee(&config, agent_id.len());
+    let discount_bps = config.referral_discount_bps.min(10_000);
+    let share_bps = config.referral_share_bps.min(10_000);
     let referral_points = config.referral_register_points;
     drop(config);
+
+    // Calculate actual fee after discount
+    let fee = base_fee
+        .checked_mul(10_000 - discount_bps)
+        .unwrap()
+        / 10_000;
+    // Calculate referral share from the actual fee
+    let referral_share = fee
+        .checked_mul(share_bps)
+        .unwrap()
+        / 10_000;
+    let system_share = fee.saturating_sub(referral_share);
 
     // Validate referral authority matches referral_agent.authority
     let referral_record = ctx.accounts.referral_agent.load()?;
@@ -211,14 +221,27 @@ pub fn register_agent_with_referral(ctx: Context<RegisterAgentWithReferral>, age
 
 // ── Shared helpers ───────────────────────────────────────────────────────
 
-fn validate_agent_id(agent_id: &str) -> Result<()> {
+fn validate_agent_id(agent_id: &str, authority: &Pubkey, admin: Pubkey) -> Result<()> {
     require!(agent_id.len() >= MIN_AGENT_ID_LEN, AgentRegistryError::AgentIdTooShort);
     require!(agent_id.len() <= MAX_AGENT_ID_LEN, AgentRegistryError::AgentIdTooLong);
     require!(
         agent_id.chars().all(|c| !c.is_uppercase()),
         AgentRegistryError::AgentIdNotLowercase
     );
+    // Short IDs (<=4 chars) are admin-only
+    if agent_id.len() <= ADMIN_ONLY_AGENT_ID_LEN {
+        require_keys_eq!(*authority, admin, AgentRegistryError::AgentIdReserved);
+    }
     Ok(())
+}
+
+fn get_register_fee(config: &ProgramConfig, id_len: usize) -> u64 {
+    match id_len {
+        5 => config.register_fee_5,
+        6 => config.register_fee_6,
+        7 => config.register_fee_7,
+        _ => config.register_fee, // 8+ and admin-only (<=4) use base fee
+    }
 }
 
 fn init_agent_state(

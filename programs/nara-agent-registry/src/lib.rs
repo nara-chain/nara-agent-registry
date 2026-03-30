@@ -25,8 +25,8 @@ pub mod nara_agent_registry {
         instructions::update_admin::update_admin(ctx, new_admin)
     }
 
-    pub fn update_register_fee(ctx: Context<UpdateRegisterFee>, new_fee: u64) -> Result<()> {
-        instructions::update_register_fee::update_register_fee(ctx, new_fee)
+    pub fn update_register_fee(ctx: Context<UpdateRegisterFee>, fee: u64, fee_7: u64, fee_6: u64, fee_5: u64) -> Result<()> {
+        instructions::update_register_fee::update_register_fee(ctx, fee, fee_7, fee_6, fee_5)
     }
 
     pub fn update_points_config(ctx: Context<UpdatePointsConfig>, points_self: u64, points_referral: u64) -> Result<()> {
@@ -39,11 +39,11 @@ pub mod nara_agent_registry {
 
     pub fn update_referral_config(
         ctx: Context<UpdateReferralConfig>,
-        referral_register_fee: u64,
-        referral_fee_share: u64,
+        referral_discount_bps: u64,
+        referral_share_bps: u64,
         referral_register_points: u64,
     ) -> Result<()> {
-        instructions::update_referral_config::update_referral_config(ctx, referral_register_fee, referral_fee_share, referral_register_points)
+        instructions::update_referral_config::update_referral_config(ctx, referral_discount_bps, referral_share_bps, referral_register_points)
     }
 
     pub fn register_agent(ctx: Context<RegisterAgent>, agent_id: String) -> Result<()> {

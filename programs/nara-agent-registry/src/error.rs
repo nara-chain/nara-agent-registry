@@ -94,4 +94,6 @@ pub enum AgentRegistryError {
     InvalidTweetUrlFormat,
     #[msg("Tweet has already been approved")]
     TweetAlreadyApproved,
+    #[msg("Agent ID length <= 4 is reserved for admin only")]
+    AgentIdReserved,
 }

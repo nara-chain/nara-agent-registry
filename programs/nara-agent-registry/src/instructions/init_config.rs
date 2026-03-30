@@ -46,11 +46,14 @@ pub fn init_config(ctx: Context<InitConfig>) -> Result<()> {
     config.referee_activity_mint = ctx.accounts.referee_activity_mint.key();
     config.points_self = DEFAULT_POINTS_SELF;
     config.points_referral = DEFAULT_POINTS_REFERRAL;
-    config.referral_register_fee = DEFAULT_REFERRAL_REGISTER_FEE;
-    config.referral_fee_share = DEFAULT_REFERRAL_FEE_SHARE;
+    config.referral_discount_bps = DEFAULT_REFERRAL_DISCOUNT_BPS;
+    config.referral_share_bps = DEFAULT_REFERRAL_SHARE_BPS;
     config.referral_register_points = DEFAULT_REFERRAL_REGISTER_POINTS;
     config.activity_reward = DEFAULT_ACTIVITY_REWARD;
     config.referral_activity_reward = DEFAULT_REFERRAL_ACTIVITY_REWARD;
+    config.register_fee_7 = DEFAULT_REGISTER_FEE_7;
+    config.register_fee_6 = DEFAULT_REGISTER_FEE_6;
+    config.register_fee_5 = DEFAULT_REGISTER_FEE_5;
     drop(config);
 
     let mint_authority_seeds: &[&[&[u8]]] = &[&[SEED_MINT_AUTHORITY, &[ctx.bumps.mint_authority]]];

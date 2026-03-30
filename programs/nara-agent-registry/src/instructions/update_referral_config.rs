@@ -16,17 +16,21 @@ pub struct UpdateReferralConfig<'info> {
 
 pub fn update_referral_config(
     ctx: Context<UpdateReferralConfig>,
-    referral_register_fee: u64,
-    referral_fee_share: u64,
+    referral_discount_bps: u64,
+    referral_share_bps: u64,
     referral_register_points: u64,
 ) -> Result<()> {
     require!(
-        referral_fee_share <= referral_register_fee,
+        referral_discount_bps <= 10_000,
+        AgentRegistryError::InvalidReferralFeeConfig
+    );
+    require!(
+        referral_share_bps <= 10_000,
         AgentRegistryError::InvalidReferralFeeConfig
     );
     let mut config = ctx.accounts.config.load_mut()?;
-    config.referral_register_fee = referral_register_fee;
-    config.referral_fee_share = referral_fee_share;
+    config.referral_discount_bps = referral_discount_bps;
+    config.referral_share_bps = referral_share_bps;
     config.referral_register_points = referral_register_points;
     Ok(())
 }

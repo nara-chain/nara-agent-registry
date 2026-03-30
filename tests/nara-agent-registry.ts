@@ -280,7 +280,7 @@ describe("nara-agent-registry", () => {
 
     it("update_register_fee: admin can update", async () => {
       await program.methods
-        .updateRegisterFee(new anchor.BN(0))
+        .updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
         .accounts({})
         .rpc();
       let cfg = await program.account.programConfig.fetch(configPDA());
@@ -288,7 +288,7 @@ describe("nara-agent-registry", () => {
 
       // Restore to 1 SOL
       await program.methods
-        .updateRegisterFee(ONE_SOL)
+        .updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL)
         .accounts({})
         .rpc();
       cfg = await program.account.programConfig.fetch(configPDA());
@@ -299,7 +299,7 @@ describe("nara-agent-registry", () => {
       const other = Keypair.generate();
       try {
         await program.methods
-          .updateRegisterFee(new anchor.BN(0))
+          .updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
           .accounts({ admin: other.publicKey })
           .signers([other])
           .rpc();
@@ -312,7 +312,7 @@ describe("nara-agent-registry", () => {
     it("collects fee to fee_vault PDA", async () => {
       const smallFee = new anchor.BN(10_000_000); // 0.01 SOL
       await program.methods
-        .updateRegisterFee(smallFee)
+        .updateRegisterFee(smallFee, smallFee, smallFee, smallFee)
         .accounts({})
         .rpc();
 
@@ -324,7 +324,7 @@ describe("nara-agent-registry", () => {
         expect(after - before).to.eq(10_000_000);
       } finally {
         await program.methods
-          .updateRegisterFee(ONE_SOL)
+          .updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL)
           .accounts({})
           .rpc();
       }
@@ -416,9 +416,9 @@ describe("nara-agent-registry", () => {
         const FEE = new anchor.BN(5_000_000); // 0.005 SOL
 
         // Register a fresh agent (temporarily set fee=0)
-        await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+        await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
         await doRegisterAgent(AGENT_ID);
-        await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+        await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
 
         // Set up a local verifier
         const expandVerifier = Keypair.generate();
@@ -538,12 +538,19 @@ describe("nara-agent-registry", () => {
       }
     });
 
-    it("rejects agent IDs shorter than 5 bytes (AgentIdTooShort)", async () => {
+    it("rejects agent IDs <= 4 chars for non-admin (AgentIdReserved)", async () => {
+      const other = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(other.publicKey, 2 * web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
       try {
-        await doRegisterAgent("abcd"); // 4 chars < 5 minimum
+        await program.methods
+          .registerAgent("abcd")
+          .accounts({ feeVault: feeVaultPDA(), authority: other.publicKey })
+          .signers([other])
+          .rpc();
         expect.fail("expected error");
       } catch (e: any) {
-        expect(e.error?.errorCode?.code ?? e.message).to.include("AgentIdTooShort");
+        expect(e.error?.errorCode?.code ?? e.message).to.include("AgentIdReserved");
       }
     });
   });
@@ -1582,9 +1589,9 @@ describe("nara-agent-registry", () => {
 
     before(async () => {
       // Register the test agent (fee=0 to avoid needing SOL for registration)
-      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
       await doRegisterAgent(TWITTER_AGENT_ID);
-      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+      await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
 
       // Set up verifier keypair
       verifier = Keypair.generate();
@@ -1708,9 +1715,9 @@ describe("nara-agent-registry", () => {
     it("verify_twitter: rejects non-verifier", async () => {
       // Need a new agent in pending state for this test
       const newAgentId = "twitter-agent-02";
-      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
       await doRegisterAgent(newAgentId);
-      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+      await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
 
       await program.methods
         .setTwitter(newAgentId, "other_handle", "https://x.com/test/status/999")
@@ -1747,9 +1754,9 @@ describe("nara-agent-registry", () => {
     it("verify_twitter: rejects duplicate twitter handle", async () => {
       // twitter-agent-02 is pending with "other_handle", but let's try with TWITTER_USERNAME which is already verified
       const newAgentId = "twitter-agent-03";
-      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
       await doRegisterAgent(newAgentId);
-      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+      await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
 
       await program.methods
         .setTwitter(newAgentId, TWITTER_USERNAME, "https://x.com/test/status/dup")
@@ -1878,9 +1885,9 @@ describe("nara-agent-registry", () => {
     it("unbind_twitter: after unbind, same username can be re-bound to different agent", async () => {
       // Register a new agent
       const newAgentId = "twitter-rebind-agent";
-      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
       await doRegisterAgent(newAgentId);
-      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+      await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
 
       // Set twitter on new agent with same username
       await program.methods
@@ -1936,9 +1943,9 @@ describe("nara-agent-registry", () => {
 
     before(async () => {
       // Register a new agent
-      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
       await doRegisterAgent(TWEET_AGENT_ID);
-      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+      await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
 
       // Set up verifier
       verifier = Keypair.generate();
@@ -2040,9 +2047,9 @@ describe("nara-agent-registry", () => {
     it("submit_tweet: setup tweet-verify-agent-2 with verified twitter", async () => {
       // Register another agent and verify twitter for later tests
       const otherAgentId = "tweet-verify-agent-2";
-      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
       await doRegisterAgent(otherAgentId);
-      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+      await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
 
       const otherUsername = "othertwitter";
       await program.methods
@@ -2207,9 +2214,9 @@ describe("nara-agent-registry", () => {
     it("submit_tweet: rejects when twitter not verified", async () => {
       // Register a new agent without verified twitter
       const noTwitterAgent = "no-twitter-agent";
-      await program.methods.updateRegisterFee(new anchor.BN(0)).accounts({}).rpc();
+      await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
       await doRegisterAgent(noTwitterAgent);
-      await program.methods.updateRegisterFee(ONE_SOL).accounts({}).rpc();
+      await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
 
       // Set twitter but don't verify — status=Pending(1), not Verified(2)
       await program.methods

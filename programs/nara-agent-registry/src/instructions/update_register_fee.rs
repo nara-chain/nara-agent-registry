@@ -14,7 +14,11 @@ pub struct UpdateRegisterFee<'info> {
     pub config: AccountLoader<'info, ProgramConfig>,
 }
 
-pub fn update_register_fee(ctx: Context<UpdateRegisterFee>, new_fee: u64) -> Result<()> {
-    ctx.accounts.config.load_mut()?.register_fee = new_fee;
+pub fn update_register_fee(ctx: Context<UpdateRegisterFee>, fee: u64, fee_7: u64, fee_6: u64, fee_5: u64) -> Result<()> {
+    let mut config = ctx.accounts.config.load_mut()?;
+    config.register_fee = fee;
+    config.register_fee_7 = fee_7;
+    config.register_fee_6 = fee_6;
+    config.register_fee_5 = fee_5;
     Ok(())
 }
