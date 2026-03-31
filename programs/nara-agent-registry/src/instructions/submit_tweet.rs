@@ -9,6 +9,7 @@ use super::helpers::queue_push;
 #[instruction(agent_id: String, tweet_id: u128)]
 pub struct SubmitTweet<'info> {
     #[account(mut)]
+    pub payer: Signer<'info>,
     pub authority: Signer<'info>,
     #[account(
         seeds = [SEED_AGENT, agent_id.as_bytes()],
@@ -23,7 +24,7 @@ pub struct SubmitTweet<'info> {
     pub twitter: AccountLoader<'info, AgentTwitter>,
     #[account(
         init_if_needed,
-        payer = authority,
+        payer = payer,
         space = 8 + std::mem::size_of::<TweetVerify>(),
         seeds = [SEED_TWEET_VERIFY, agent.key().as_ref()],
         bump,
@@ -88,7 +89,7 @@ pub fn submit_tweet(ctx: Context<SubmitTweet>, agent_id: String, tweet_id: u128)
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
                 anchor_lang::system_program::Transfer {
-                    from: ctx.accounts.authority.to_account_info(),
+                    from: ctx.accounts.payer.to_account_info(),
                     to: ctx.accounts.twitter_verify_vault.to_account_info(),
                 },
             ),
@@ -109,7 +110,7 @@ pub fn submit_tweet(ctx: Context<SubmitTweet>, agent_id: String, tweet_id: u128)
     // Add to queue
     queue_push(
         &ctx.accounts.tweet_verify_queue.to_account_info(),
-        &ctx.accounts.authority.to_account_info(),
+        &ctx.accounts.payer.to_account_info(),
         &ctx.accounts.system_program.to_account_info(),
         ctx.program_id,
         &[SEED_TWEET_VERIFY_QUEUE],

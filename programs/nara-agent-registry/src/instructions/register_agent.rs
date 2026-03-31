@@ -14,10 +14,11 @@ use crate::seeds::*;
 #[instruction(agent_id: String)]
 pub struct RegisterAgent<'info> {
     #[account(mut)]
+    pub payer: Signer<'info>,
     pub authority: Signer<'info>,
     #[account(
         init,
-        payer = authority,
+        payer = payer,
         space = 8 + std::mem::size_of::<AgentState>(),
         seeds = [SEED_AGENT, agent_id.as_bytes()],
         bump,
@@ -42,7 +43,7 @@ pub fn register_agent(ctx: Context<RegisterAgent>, agent_id: String) -> Result<(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
                 anchor_lang::system_program::Transfer {
-                    from: ctx.accounts.authority.to_account_info(),
+                    from: ctx.accounts.payer.to_account_info(),
                     to: ctx.accounts.fee_vault.to_account_info(),
                 },
             ),
@@ -61,10 +62,11 @@ pub fn register_agent(ctx: Context<RegisterAgent>, agent_id: String) -> Result<(
 #[instruction(agent_id: String)]
 pub struct RegisterAgentWithReferral<'info> {
     #[account(mut)]
+    pub payer: Signer<'info>,
     pub authority: Signer<'info>,
     #[account(
         init,
-        payer = authority,
+        payer = payer,
         space = 8 + std::mem::size_of::<AgentState>(),
         seeds = [SEED_AGENT, agent_id.as_bytes()],
         bump,
@@ -86,7 +88,7 @@ pub struct RegisterAgentWithReferral<'info> {
     pub referral_authority: UncheckedAccount<'info>,
     #[account(
         init_if_needed,
-        payer = authority,
+        payer = payer,
         associated_token::mint = point_mint,
         associated_token::authority = referral_authority,
         associated_token::token_program = token_program,
@@ -96,7 +98,7 @@ pub struct RegisterAgentWithReferral<'info> {
     pub referee_mint: InterfaceAccount<'info, MintInterface>,
     #[account(
         init_if_needed,
-        payer = authority,
+        payer = payer,
         associated_token::mint = referee_mint,
         associated_token::authority = referral_authority,
         associated_token::token_program = token_program,
@@ -146,7 +148,7 @@ pub fn register_agent_with_referral(ctx: Context<RegisterAgentWithReferral>, age
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
                 anchor_lang::system_program::Transfer {
-                    from: ctx.accounts.authority.to_account_info(),
+                    from: ctx.accounts.payer.to_account_info(),
                     to: ctx.accounts.fee_vault.to_account_info(),
                 },
             ),
@@ -160,7 +162,7 @@ pub fn register_agent_with_referral(ctx: Context<RegisterAgentWithReferral>, age
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
                 anchor_lang::system_program::Transfer {
-                    from: ctx.accounts.authority.to_account_info(),
+                    from: ctx.accounts.payer.to_account_info(),
                     to: ctx.accounts.referral_authority.to_account_info(),
                 },
             ),

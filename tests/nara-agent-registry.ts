@@ -2272,4 +2272,195 @@ describe("nara-agent-registry", () => {
       }
     });
   });
+
+  // ── Gas sponsorship (separate payer) ───────────────────────────────────
+  describe("gas_sponsorship", () => {
+    let sponsor: Keypair;
+    let user: Keypair;
+    let verifier: Keypair;
+
+    before(async () => {
+      // Create sponsor (payer) and user (authority) keypairs
+      sponsor = Keypair.generate();
+      user = Keypair.generate();
+      verifier = Keypair.generate();
+
+      // Fund sponsor generously, user gets minimal SOL (just for signing)
+      const sig1 = await provider.connection.requestAirdrop(sponsor.publicKey, 20 * web3.LAMPORTS_PER_SOL);
+      const sig2 = await provider.connection.requestAirdrop(user.publicKey, 0.01 * web3.LAMPORTS_PER_SOL);
+      const sig3 = await provider.connection.requestAirdrop(verifier.publicKey, 5 * web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig1);
+      await provider.connection.confirmTransaction(sig2);
+      await provider.connection.confirmTransaction(sig3);
+
+      // Set fee to 0 so sponsor doesn't need to pay registration fee for setup
+      await program.methods
+        .updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({})
+        .rpc();
+
+      // Set verifier
+      await program.methods.updateTwitterVerifier(verifier.publicKey).accounts({}).rpc();
+    });
+
+    after(async () => {
+      // Restore fees
+      await program.methods
+        .updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL)
+        .accounts({})
+        .rpc();
+    });
+
+    it("register_agent: sponsor pays gas and rent, user is authority", async () => {
+      const agentId = "sponsored-agent";
+      const sponsorBefore = await provider.connection.getBalance(sponsor.publicKey);
+      const userBefore = await provider.connection.getBalance(user.publicKey);
+
+      await program.methods
+        .registerAgent(agentId)
+        .accounts({
+          payer: sponsor.publicKey,
+          authority: user.publicKey,
+          feeVault: feeVaultPDA(),
+        })
+        .signers([sponsor, user])
+        .rpc();
+
+      // Agent created with user as authority
+      const agentKey = agentPDA(agentId);
+      const agent = await program.account.agentState.fetch(agentKey);
+      expect(agent.authority.equals(user.publicKey)).to.be.true;
+
+      // Sponsor paid rent, user balance barely changed
+      const sponsorAfter = await provider.connection.getBalance(sponsor.publicKey);
+      const userAfter = await provider.connection.getBalance(user.publicKey);
+      expect(sponsorBefore - sponsorAfter).to.be.greaterThan(0);
+      expect(userBefore - userAfter).to.be.lessThan(100_000);
+    });
+
+    it("register_agent: sponsor pays tiered fee", async () => {
+      // Set fee: 8+ chars = 1 SOL
+      await program.methods
+        .updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL)
+        .accounts({})
+        .rpc();
+
+      const agentId = "sponsored-fee-agent";
+      const vaultBefore = await provider.connection.getBalance(feeVaultPDA());
+
+      await program.methods
+        .registerAgent(agentId)
+        .accounts({
+          payer: sponsor.publicKey,
+          authority: user.publicKey,
+          feeVault: feeVaultPDA(),
+        })
+        .signers([sponsor, user])
+        .rpc();
+
+      const vaultAfter = await provider.connection.getBalance(feeVaultPDA());
+      expect(vaultAfter - vaultBefore).to.eq(1_000_000_000); // 1 SOL from sponsor
+
+      // Reset fee
+      await program.methods
+        .updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({})
+        .rpc();
+    });
+
+    it("set_twitter: sponsor pays gas and verification fee", async () => {
+      const agentId = "sponsored-agent";
+
+      // Set verification fee
+      await program.methods
+        .updateTwitterVerificationConfig(
+          new anchor.BN(5_000_000), new anchor.BN(0), new anchor.BN(0)
+        )
+        .accounts({})
+        .rpc();
+
+      const vaultBefore = await provider.connection.getBalance(twitterVerifyVaultPDA());
+      const sponsorBefore = await provider.connection.getBalance(sponsor.publicKey);
+
+      await program.methods
+        .setTwitter(agentId, "sponsor_twitter", "https://x.com/sponsor_twitter/status/999")
+        .accounts({
+          payer: sponsor.publicKey,
+          authority: user.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+        })
+        .signers([sponsor, user])
+        .rpc();
+
+      // Fee came from sponsor
+      const vaultAfter = await provider.connection.getBalance(twitterVerifyVaultPDA());
+      expect(vaultAfter - vaultBefore).to.eq(5_000_000);
+
+      const sponsorAfter = await provider.connection.getBalance(sponsor.publicKey);
+      expect(sponsorBefore - sponsorAfter).to.be.greaterThan(5_000_000); // fee + rent
+    });
+
+    it("submit_tweet: sponsor pays gas and verification fee", async () => {
+      const agentId = "sponsored-agent";
+
+      // First verify twitter so we can submit a tweet
+      await program.methods
+        .verifyTwitter(agentId, "sponsor_twitter")
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: user.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+        })
+        .signers([verifier])
+        .rpc();
+
+      const tweetId = new anchor.BN("7777777777");
+      const vaultBefore = await provider.connection.getBalance(twitterVerifyVaultPDA());
+      const sponsorBefore = await provider.connection.getBalance(sponsor.publicKey);
+
+      await program.methods
+        .submitTweet(agentId, tweetId)
+        .accounts({
+          payer: sponsor.publicKey,
+          authority: user.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          tweetVerifyQueue: tweetVerifyQueuePDA(),
+          tweetRecord: tweetRecordPDA(tweetId),
+        })
+        .signers([sponsor, user])
+        .rpc();
+
+      // Fee came from sponsor
+      const vaultAfter = await provider.connection.getBalance(twitterVerifyVaultPDA());
+      expect(vaultAfter - vaultBefore).to.eq(5_000_000);
+
+      const sponsorAfter = await provider.connection.getBalance(sponsor.publicKey);
+      expect(sponsorBefore - sponsorAfter).to.be.greaterThan(5_000_000);
+
+      // TweetVerify created with correct agent
+      const agentKey = agentPDA(agentId);
+      const tvKey = tweetVerifyPDA(agentKey);
+      const tv = await program.account.tweetVerify.fetch(tvKey);
+      expect(tv.status.toNumber()).to.eq(1); // Pending
+    });
+
+    it("register_agent: rejects if authority doesn't sign", async () => {
+      const otherUser = Keypair.generate();
+      try {
+        await program.methods
+          .registerAgent("no-auth-sign")
+          .accounts({
+            payer: sponsor.publicKey,
+            authority: otherUser.publicKey,
+            feeVault: feeVaultPDA(),
+          })
+          .signers([sponsor]) // missing otherUser signature
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.toString()).to.include("Signature verification failed");
+      }
+    });
+  });
 });

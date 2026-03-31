@@ -19,6 +19,7 @@ pub struct TwitterBindRequested {
 #[instruction(agent_id: String)]
 pub struct SetTwitter<'info> {
     #[account(mut)]
+    pub payer: Signer<'info>,
     pub authority: Signer<'info>,
     #[account(
         seeds = [SEED_AGENT, agent_id.as_bytes()],
@@ -28,7 +29,7 @@ pub struct SetTwitter<'info> {
     pub agent: AccountLoader<'info, AgentState>,
     #[account(
         init_if_needed,
-        payer = authority,
+        payer = payer,
         space = 8 + std::mem::size_of::<AgentTwitter>(),
         seeds = [SEED_TWITTER, agent.key().as_ref()],
         bump,
@@ -61,7 +62,7 @@ pub fn set_twitter(ctx: Context<SetTwitter>, agent_id: String, username: String,
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
                 anchor_lang::system_program::Transfer {
-                    from: ctx.accounts.authority.to_account_info(),
+                    from: ctx.accounts.payer.to_account_info(),
                     to: ctx.accounts.twitter_verify_vault.to_account_info(),
                 },
             ),
@@ -101,7 +102,7 @@ pub fn set_twitter(ctx: Context<SetTwitter>, agent_id: String, username: String,
     // Add this twitter PDA to the global pending-verification queue
     queue_push(
         &ctx.accounts.twitter_queue.to_account_info(),
-        &ctx.accounts.authority.to_account_info(),
+        &ctx.accounts.payer.to_account_info(),
         &ctx.accounts.system_program.to_account_info(),
         ctx.program_id,
         &[SEED_TWITTER_QUEUE],
