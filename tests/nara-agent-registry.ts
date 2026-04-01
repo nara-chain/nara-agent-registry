@@ -1815,6 +1815,87 @@ describe("nara-agent-registry", () => {
       expect(queue.some(k => k.equals(agent03Twitter))).to.be.true; // agent-03 survived swap
     });
 
+    it("approve_rejected_twitter: verifier approves previously rejected, with rewards", async () => {
+      const agentId = "twitter-agent-02";
+      const agentKey = agentPDA(agentId);
+      const twitterKey = twitterPDA(agentKey);
+      const username = "other_handle";
+
+      // Confirm status is Rejected (3)
+      const before = await program.account.agentTwitter.fetch(twitterKey);
+      expect(before.status.toNumber()).to.eq(3);
+
+      // Set reward and points for this test
+      const REWARD = new anchor.BN(10_000_000); // 0.01 SOL
+      const POINTS = new anchor.BN(5);
+      await program.methods
+        .updateTwitterVerificationConfig(VERIFY_FEE, REWARD, POINTS)
+        .accounts({})
+        .rpc();
+
+      // Fund treasury for reward
+      const treasuryKey = treasuryPDA();
+      const treasurySig = await provider.connection.requestAirdrop(treasuryKey, 2 * web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(treasurySig);
+
+      const authorityBefore = await provider.connection.getBalance(authority.publicKey);
+      const pointsBefore = await getPointBalance(authority.publicKey);
+
+      await program.methods
+        .approveRejectedTwitter(agentId, username)
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: authority.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+        })
+        .signers([verifier])
+        .rpc();
+
+      // Status should now be Verified (2)
+      const after = await program.account.agentTwitter.fetch(twitterKey);
+      expect(after.status.toNumber()).to.eq(2);
+      expect(after.verifiedAt.toNumber()).to.be.greaterThan(0);
+
+      // TwitterHandle should point to this agent
+      const handleKey = twitterHandlePDA(username);
+      const handle = await program.account.twitterHandle.fetch(handleKey);
+      expect(handle.agent.equals(agentKey)).to.be.true;
+
+      // Verify reward was transferred from treasury
+      const authorityAfter = await provider.connection.getBalance(authority.publicKey);
+      expect(authorityAfter).to.be.greaterThan(authorityBefore);
+
+      // Verify points were minted
+      const pointsAfter = await getPointBalance(authority.publicKey);
+      expect(pointsAfter - pointsBefore).to.eq(BigInt(5));
+
+      // Reset config
+      await program.methods
+        .updateTwitterVerificationConfig(VERIFY_FEE, new anchor.BN(0), new anchor.BN(0))
+        .accounts({})
+        .rpc();
+    });
+
+    it("approve_rejected_twitter: rejects if status is not Rejected", async () => {
+      // TWITTER_AGENT_ID is Verified (status=2), should fail
+      try {
+        await program.methods
+          .approveRejectedTwitter(TWITTER_AGENT_ID, TWITTER_USERNAME)
+          .accounts({
+            verifier: verifier.publicKey,
+            authority: authority.publicKey,
+            twitterVerifyVault: twitterVerifyVaultPDA(),
+            treasury: treasuryPDA(),
+          })
+          .signers([verifier])
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("TwitterNotRejected");
+      }
+    });
+
     it("unbind_twitter: agent unbinds verified twitter, pays fee, TwitterHandle cleared", async () => {
       const agentKey = agentPDA(TWITTER_AGENT_ID);
       const twitterKey = twitterPDA(agentKey);

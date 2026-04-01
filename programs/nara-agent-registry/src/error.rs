@@ -96,4 +96,6 @@ pub enum AgentRegistryError {
     TweetAlreadyApproved,
     #[msg("Agent ID length <= 4 is reserved for admin only")]
     AgentIdReserved,
+    #[msg("Twitter binding is not in rejected status")]
+    TwitterNotRejected,
 }

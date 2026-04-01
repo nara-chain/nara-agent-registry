@@ -147,6 +147,10 @@ pub mod nara_agent_registry {
         instructions::verify_twitter::verify_twitter(ctx, agent_id, username)
     }
 
+    pub fn approve_rejected_twitter(ctx: Context<ApproveRejectedTwitter>, agent_id: String, username: String) -> Result<()> {
+        instructions::approve_rejected_twitter::approve_rejected_twitter(ctx, agent_id, username)
+    }
+
     pub fn reject_twitter(ctx: Context<RejectTwitter>, agent_id: String) -> Result<()> {
         instructions::reject_twitter::reject_twitter(ctx, agent_id)
     }
