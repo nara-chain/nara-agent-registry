@@ -82,6 +82,7 @@ pub struct RegisterAgentWithReferral<'info> {
     /// CHECK: Mint authority PDA for signing mint_to.
     #[account(seeds = [SEED_MINT_AUTHORITY], bump)]
     pub mint_authority: UncheckedAccount<'info>,
+    #[account(mut)]
     pub referral_agent: AccountLoader<'info, AgentState>,
     /// CHECK: Referral authority; validated in handler against referral_agent.authority.
     #[account(mut)]
@@ -210,6 +211,11 @@ pub fn register_agent_with_referral(ctx: Context<RegisterAgentWithReferral>, age
         ],
         authority_seeds,
     )?;
+
+    // Increment referral count on the referral agent
+    let mut referral = ctx.accounts.referral_agent.load_mut()?;
+    referral.referral_count = referral.referral_count.saturating_add(1);
+    drop(referral);
 
     init_agent_state(
         &ctx.accounts.agent,

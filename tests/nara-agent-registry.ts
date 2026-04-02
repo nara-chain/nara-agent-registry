@@ -1269,6 +1269,10 @@ describe("nara-agent-registry", () => {
       // Verify NARA Referee token was minted (1 from set_referral)
       const balance = await getRefereeBalance(authority.publicKey);
       expect(balance).to.eq(BigInt(1));
+
+      // Verify referral_count incremented on the referral agent
+      const referralAgent = await program.account.agentState.fetch(agentPDA(REFERRAL_ID));
+      expect(referralAgent.referralCount).to.eq(1);
     });
 
     it("rejects setting referral again (ReferralAlreadySet)", async () => {

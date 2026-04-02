@@ -18,6 +18,7 @@ pub struct SetReferral<'info> {
         has_one = authority @ AgentRegistryError::Unauthorized,
     )]
     pub agent: AccountLoader<'info, AgentState>,
+    #[account(mut)]
     pub referral_agent: AccountLoader<'info, AgentState>,
     #[account(seeds = [SEED_CONFIG], bump)]
     pub config: AccountLoader<'info, ProgramConfig>,
@@ -60,6 +61,11 @@ pub fn set_referral(ctx: Context<SetReferral>, _agent_id: String) -> Result<()> 
     );
     drop(referral);
     drop(agent);
+
+    // Increment referral count on the referral agent
+    let mut referral = ctx.accounts.referral_agent.load_mut()?;
+    referral.referral_count = referral.referral_count.saturating_add(1);
+    drop(referral);
 
     let config = ctx.accounts.config.load()?;
     let referee_mint_key = config.referee_mint;

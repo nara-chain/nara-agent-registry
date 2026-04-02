@@ -14,7 +14,7 @@ pub struct AgentState {
     pub agent_id: [u8; 32],
     pub referral_id_len: u32,
     pub referral_id: [u8; 32],
-    pub _padding: u32,
+    pub referral_count: u32,
     pub _reserved: [u8; 64],
 }
 
