@@ -104,13 +104,13 @@ pub fn approve_rejected_twitter(ctx: Context<ApproveRejectedTwitter>, _agent_id:
     twitter.verified_at = Clock::get()?.unix_timestamp;
     drop(twitter);
 
-    // Init or reuse TwitterHandle
-    let is_new = {
+    // Init or reuse TwitterHandle. is_first_bind = brand new TwitterHandle PDA.
+    let is_first_bind = {
         let acc_info = ctx.accounts.twitter_handle.to_account_info();
         let data = acc_info.try_borrow_data()?;
         data[..8] == [0u8; 8]
     };
-    let mut handle = if is_new {
+    let mut handle = if is_first_bind {
         ctx.accounts.twitter_handle.load_init()?
     } else {
         let h = ctx.accounts.twitter_handle.load_mut()?;
@@ -123,6 +123,10 @@ pub fn approve_rejected_twitter(ctx: Context<ApproveRejectedTwitter>, _agent_id:
     };
     handle.agent = ctx.accounts.agent.key();
     drop(handle);
+
+    // Skip rewards/points if this twitter has been rewarded before
+    let reward = if is_first_bind { reward } else { 0 };
+    let points = if is_first_bind { points } else { 0 };
 
     // Refund verification fee from twitter_verify_vault
     let vault_bump = ctx.bumps.twitter_verify_vault;

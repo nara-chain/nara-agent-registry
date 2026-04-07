@@ -1935,11 +1935,26 @@ describe("nara-agent-registry", () => {
       expect(vaultAfter - vaultBefore).to.eq(1_000_000_000); // 1 NARA
     });
 
-    it("unbind_twitter: after unbind, same username can be re-bound to same agent", async () => {
+    it("unbind_twitter: after unbind, re-bind succeeds but no reward (TwitterHandle exists)", async () => {
+      // Set reward + points to verify they are NOT given on re-bind
+      const REWARD = new anchor.BN(10_000_000);
+      const POINTS = new anchor.BN(7);
+      await program.methods
+        .updateTwitterVerificationConfig(VERIFY_FEE, REWARD, POINTS)
+        .accounts({})
+        .rpc();
+
+      // Fund treasury so reward could be paid (if eligible)
+      const treasurySig = await provider.connection.requestAirdrop(treasuryPDA(), 2 * web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(treasurySig);
+
       await program.methods
         .setTwitter(TWITTER_AGENT_ID, TWITTER_USERNAME, "https://x.com/naraproject/status/newtweet")
         .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
         .rpc();
+
+      const pointsBefore = await getPointBalance(authority.publicKey);
+      const treasuryBefore = await provider.connection.getBalance(treasuryPDA());
 
       // Verify and re-bind
       await program.methods
@@ -1957,6 +1972,18 @@ describe("nara-agent-registry", () => {
       const handleAcc = await program.account.twitterHandle.fetch(handleKey);
       const agentKey = agentPDA(TWITTER_AGENT_ID);
       expect(handleAcc.agent.equals(agentKey)).to.be.true;
+
+      // No reward should have been transferred (TwitterHandle existed before)
+      const pointsAfter = await getPointBalance(authority.publicKey);
+      expect(pointsAfter).to.eq(pointsBefore);
+      const treasuryAfter = await provider.connection.getBalance(treasuryPDA());
+      expect(treasuryAfter).to.eq(treasuryBefore);
+
+      // Reset config
+      await program.methods
+        .updateTwitterVerificationConfig(VERIFY_FEE, new anchor.BN(0), new anchor.BN(0))
+        .accounts({})
+        .rpc();
 
       // Unbind again for next test
       await program.methods
@@ -1997,6 +2024,105 @@ describe("nara-agent-registry", () => {
       const handleAcc = await program.account.twitterHandle.fetch(handleKey);
       const newAgentKey = agentPDA(newAgentId);
       expect(handleAcc.agent.equals(newAgentKey)).to.be.true;
+    });
+
+    it("reward dedup is per-twitter (not per-agent): rebind new gets reward, rebind old does not", async () => {
+      // Set reward + points
+      const REWARD = new anchor.BN(10_000_000); // 0.01 SOL
+      const POINTS = new anchor.BN(3);
+      await program.methods
+        .updateTwitterVerificationConfig(VERIFY_FEE, REWARD, POINTS)
+        .accounts({})
+        .rpc();
+      const treasurySig = await provider.connection.requestAirdrop(treasuryPDA(), 2 * web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(treasurySig);
+
+      const TWITTER_A = "dedup_twitter_a";
+      const TWITTER_B = "dedup_twitter_b";
+      const AGENT_1 = "dedup-agent-one";
+      const AGENT_2 = "dedup-agent-two";
+
+      // Register two agents (fee=0 to skip)
+      await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
+      await doRegisterAgent(AGENT_1);
+      await doRegisterAgent(AGENT_2);
+      await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
+
+      // Step 1: AGENT_1 binds TWITTER_A → first time, should get reward
+      await program.methods
+        .setTwitter(AGENT_1, TWITTER_A, "https://x.com/a/status/1")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      const points0 = await getPointBalance(authority.publicKey);
+      await program.methods
+        .verifyTwitter(AGENT_1, TWITTER_A)
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: authority.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+        })
+        .signers([verifier])
+        .rpc();
+      const points1 = await getPointBalance(authority.publicKey);
+      expect(points1 - points0).to.eq(BigInt(3), "AGENT_1 + TWITTER_A: first bind should mint 3 points");
+
+      // Step 2: AGENT_1 unbinds TWITTER_A
+      await program.methods
+        .unbindTwitter(AGENT_1, TWITTER_A)
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      // Step 3: AGENT_1 binds TWITTER_B → first time for B, should get reward
+      await program.methods
+        .setTwitter(AGENT_1, TWITTER_B, "https://x.com/b/status/1")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      const points2 = await getPointBalance(authority.publicKey);
+      await program.methods
+        .verifyTwitter(AGENT_1, TWITTER_B)
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: authority.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+        })
+        .signers([verifier])
+        .rpc();
+      const points3 = await getPointBalance(authority.publicKey);
+      expect(points3 - points2).to.eq(BigInt(3), "AGENT_1 + TWITTER_B: first bind for B should mint 3 points");
+
+      // Step 4: AGENT_2 binds TWITTER_A (already bound and unbound before) → no reward
+      await program.methods
+        .setTwitter(AGENT_2, TWITTER_A, "https://x.com/a/status/2")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      const points4 = await getPointBalance(authority.publicKey);
+      await program.methods
+        .verifyTwitter(AGENT_2, TWITTER_A)
+        .accounts({
+          verifier: verifier.publicKey,
+          authority: authority.publicKey,
+          twitterVerifyVault: twitterVerifyVaultPDA(),
+          treasury: treasuryPDA(),
+        })
+        .signers([verifier])
+        .rpc();
+      const points5 = await getPointBalance(authority.publicKey);
+      expect(points5).to.eq(points4, "AGENT_2 + TWITTER_A: dedup, no points");
+
+      // TwitterHandle for A should now point to AGENT_2
+      const handleA = await program.account.twitterHandle.fetch(twitterHandlePDA(TWITTER_A));
+      expect(handleA.agent.equals(agentPDA(AGENT_2))).to.be.true;
+
+      // Reset config
+      await program.methods
+        .updateTwitterVerificationConfig(VERIFY_FEE, new anchor.BN(0), new anchor.BN(0))
+        .accounts({})
+        .rpc();
     });
 
     it("withdraw_twitter_verify_fees: admin withdraws", async () => {
