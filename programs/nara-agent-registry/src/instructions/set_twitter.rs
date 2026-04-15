@@ -90,6 +90,7 @@ pub fn set_twitter(ctx: Context<SetTwitter>, agent_id: String, username: String,
     twitter.agent_id[..agent_id.len()].copy_from_slice(agent_id.as_bytes());
     twitter.status = 1; // Pending
     twitter.verified_at = 0;
+    twitter.rejection_reason = 0;
     twitter.username_len = username.len() as u64;
     twitter.username = [0u8; 32];
     twitter.username[..username.len()].copy_from_slice(username.as_bytes());

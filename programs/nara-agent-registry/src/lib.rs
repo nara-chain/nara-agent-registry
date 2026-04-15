@@ -155,6 +155,10 @@ pub mod nara_agent_registry {
         instructions::reject_twitter::reject_twitter(ctx, agent_id)
     }
 
+    pub fn reject_twitter_with_reason(ctx: Context<RejectTwitterWithReason>, agent_id: String, reason: u64) -> Result<()> {
+        instructions::reject_twitter_with_reason::reject_twitter_with_reason(ctx, agent_id, reason)
+    }
+
     pub fn unbind_twitter(ctx: Context<UnbindTwitter>, agent_id: String, username: String) -> Result<()> {
         instructions::unbind_twitter::unbind_twitter(ctx, agent_id, username)
     }

@@ -11,6 +11,8 @@ pub struct AgentTwitter {
     pub tweet_url_len: u64,
     pub username: [u8; 32],
     pub tweet_url: [u8; 256],
-    pub _reserved: [u8; 128],
+    pub rejection_reason: u64,
+    pub _reserved: [u8; 96],
+    pub _reserved_a: [u8; 24],
     pub _reserved2: [u8; 128],
 }

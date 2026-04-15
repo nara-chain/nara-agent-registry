@@ -1809,6 +1809,8 @@ describe("nara-agent-registry", () => {
       const twitterKey = twitterPDA(agentKey);
       const twitterAcc = await program.account.agentTwitter.fetch(twitterKey);
       expect(twitterAcc.status.toNumber()).to.eq(3); // Rejected
+      // Old reject_twitter: rejection_reason stays 0
+      expect(twitterAcc.rejectionReason.toNumber()).to.eq(0);
 
       // agent-02 was at index 0, agent-03 at index 1 (len=2).
       // swap-and-pop: agent-03 moves to index 0, len becomes 1.
@@ -1817,6 +1819,44 @@ describe("nara-agent-registry", () => {
       expect(queue.length).to.eq(1, "queue should have 1 entry after rejecting agent-02");
       expect(queue.some(k => k.equals(twitterKey))).to.be.false;    // agent-02 gone
       expect(queue.some(k => k.equals(agent03Twitter))).to.be.true; // agent-03 survived swap
+    });
+
+    it("reject_twitter_with_reason: persists reason on AgentTwitter", async () => {
+      // Use twitter-agent-03 which is still pending
+      const agentId = "twitter-agent-03";
+      const agentKey = agentPDA(agentId);
+      const twitterKey = twitterPDA(agentKey);
+
+      await program.methods
+        .rejectTwitterWithReason(agentId, new anchor.BN(7))
+        .accounts({
+          verifier: verifier.publicKey,
+        })
+        .signers([verifier])
+        .rpc();
+
+      const acc = await program.account.agentTwitter.fetch(twitterKey);
+      expect(acc.status.toNumber()).to.eq(3);
+      expect(acc.rejectionReason.toNumber()).to.eq(7);
+    });
+
+    it("set_twitter after reject_with_reason clears rejection_reason", async () => {
+      const agentId = "twitter-agent-03";
+      const agentKey = agentPDA(agentId);
+      const twitterKey = twitterPDA(agentKey);
+
+      // Sanity: still has reason = 7
+      const before = await program.account.agentTwitter.fetch(twitterKey);
+      expect(before.rejectionReason.toNumber()).to.eq(7);
+
+      await program.methods
+        .setTwitter(agentId, "reused_handle_a03", "https://x.com/reused_handle_a03/status/123")
+        .accounts({ twitterVerifyVault: twitterVerifyVaultPDA() })
+        .rpc();
+
+      const after = await program.account.agentTwitter.fetch(twitterKey);
+      expect(after.status.toNumber()).to.eq(1); // Pending again
+      expect(after.rejectionReason.toNumber()).to.eq(0); // reset
     });
 
     it("approve_rejected_twitter: verifier approves previously rejected, with rewards", async () => {

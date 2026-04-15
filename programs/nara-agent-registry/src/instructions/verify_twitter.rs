@@ -118,6 +118,7 @@ pub fn verify_twitter(ctx: Context<VerifyTwitter>, _agent_id: String, username: 
     // Set verified
     twitter.status = 2; // Verified
     twitter.verified_at = Clock::get()?.unix_timestamp;
+    twitter.rejection_reason = 0;
     let twitter_key = ctx.accounts.twitter.key();
     drop(twitter);
 

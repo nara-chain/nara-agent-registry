@@ -102,6 +102,7 @@ pub fn approve_rejected_twitter(ctx: Context<ApproveRejectedTwitter>, _agent_id:
     // Set verified
     twitter.status = 2; // Verified
     twitter.verified_at = Clock::get()?.unix_timestamp;
+    twitter.rejection_reason = 0;
     drop(twitter);
 
     // Init or reuse TwitterHandle. is_first_bind = brand new TwitterHandle PDA.
