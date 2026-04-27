@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::state::{AgentState, AgentIndex};
+use crate::state::{AgentState, AgentIndex, AgentAlias};
 use crate::error::AgentRegistryError;
 use crate::seeds::*;
 
@@ -22,6 +22,14 @@ pub struct UnregisterAgentIndex<'info> {
         constraint = agent_index.load()?.agent == agent.key() @ AgentRegistryError::AgentIndexMismatch,
     )]
     pub agent_index: AccountLoader<'info, AgentIndex>,
+    /// Reverse-lookup PDA, closed alongside the main index entry.
+    #[account(
+        mut,
+        close = rent_destination,
+        seeds = [SEED_AGENT_ALIAS, agent.key().as_ref(), index_str.as_bytes()],
+        bump,
+    )]
+    pub agent_alias: AccountLoader<'info, AgentAlias>,
     pub system_program: Program<'info, System>,
 }
 

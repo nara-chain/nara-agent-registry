@@ -2535,6 +2535,12 @@ describe("nara-agent-registry", () => {
         program.programId,
       )[0];
 
+    const agentAliasPDA = (agentKey: PublicKey, s: string): PublicKey =>
+      PublicKey.findProgramAddressSync(
+        [Buffer.from("agent_alias"), agentKey.toBuffer(), Buffer.from(s)],
+        program.programId,
+      )[0];
+
     before(async () => {
       await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
       await doRegisterAgent(AGENT_ID);
@@ -2556,6 +2562,13 @@ describe("nara-agent-registry", () => {
       const idLen = idxAcc.agentIdLen;
       const id = Buffer.from(idxAcc.agentId.slice(0, idLen)).toString("utf-8");
       expect(id).to.eq(AGENT_ID);
+
+      // Reverse-lookup PDA also created
+      const aliasAcc = await program.account.agentAlias.fetch(agentAliasPDA(agentKey, INDEX_STR));
+      expect(aliasAcc.agent.equals(agentKey)).to.be.true;
+      const aliasLen = aliasAcc.indexLen;
+      const aliasStr = Buffer.from(aliasAcc.index.slice(0, aliasLen)).toString("utf-8");
+      expect(aliasStr).to.eq(INDEX_STR);
     });
 
     it("register_agent_index: rejects non-authority signer", async () => {
@@ -2603,12 +2616,13 @@ describe("nara-agent-registry", () => {
       }
     });
 
-    it("unregister_agent_index: closes the AgentIndex PDA", async () => {
+    it("unregister_agent_index: closes both AgentIndex and AgentAlias PDAs", async () => {
       const agentKey = agentPDA(AGENT_ID);
       const indexKey = agentIndexPDA(INDEX_STR);
+      const aliasKey = agentAliasPDA(agentKey, INDEX_STR);
 
-      const before = await provider.connection.getAccountInfo(indexKey);
-      expect(before).to.not.be.null;
+      expect(await provider.connection.getAccountInfo(indexKey)).to.not.be.null;
+      expect(await provider.connection.getAccountInfo(aliasKey)).to.not.be.null;
 
       await program.methods
         .unregisterAgentIndex(INDEX_STR)
@@ -2618,8 +2632,8 @@ describe("nara-agent-registry", () => {
         })
         .rpc();
 
-      const after = await provider.connection.getAccountInfo(indexKey);
-      expect(after).to.be.null;
+      expect(await provider.connection.getAccountInfo(indexKey)).to.be.null;
+      expect(await provider.connection.getAccountInfo(aliasKey)).to.be.null;
     });
 
     it("register_agent_index: same index can be re-registered after unregister", async () => {
@@ -2631,6 +2645,43 @@ describe("nara-agent-registry", () => {
 
       const idxAcc = await program.account.agentIndex.fetch(agentIndexPDA(INDEX_STR));
       expect(idxAcc.agent.equals(agentKey)).to.be.true;
+    });
+
+    it("reverse lookup: getProgramAccounts by agent returns all aliases", async () => {
+      const agentKey = agentPDA(AGENT_ID);
+      // Register two more aliases
+      await program.methods
+        .registerAgentIndex("alias_a")
+        .accounts({ agent: agentKey })
+        .rpc();
+      await program.methods
+        .registerAgentIndex("alias_b")
+        .accounts({ agent: agentKey })
+        .rpc();
+
+      // AgentAlias layout: 8 disc + 32 agent + ...
+      // memcmp at offset 8 (== agent pubkey)
+      const accs = await program.account.agentAlias.all([
+        { memcmp: { offset: 8, bytes: agentKey.toBase58() } },
+      ]);
+      const indexes = accs.map(a => {
+        const len = (a.account as any).indexLen;
+        return Buffer.from((a.account as any).index.slice(0, len)).toString("utf-8");
+      }).sort();
+      // INDEX_STR was unregistered earlier; only alias_a + alias_b + (the freshly re-registered INDEX_STR) remain
+      expect(indexes).to.include("alias_a");
+      expect(indexes).to.include("alias_b");
+      expect(indexes).to.include(INDEX_STR);
+
+      // Cleanup
+      await program.methods
+        .unregisterAgentIndex("alias_a")
+        .accounts({ rentDestination: authority.publicKey, agent: agentKey })
+        .rpc();
+      await program.methods
+        .unregisterAgentIndex("alias_b")
+        .accounts({ rentDestination: authority.publicKey, agent: agentKey })
+        .rpc();
     });
 
     it("unregister_agent_index: rejects when called by another agent's authority", async () => {
@@ -2652,7 +2703,10 @@ describe("nara-agent-registry", () => {
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
-        expect(e.error?.errorCode?.code ?? e.message).to.include("AgentIndexMismatch");
+        // alias PDA seed embeds agent.key(), so wrong agent yields AccountOwnedByWrongProgram
+        // (the alias PDA for the wrong agent doesn't exist) before AgentIndexMismatch fires
+        expect(e.error?.errorCode?.code ?? e.message)
+          .to.match(/AgentIndexMismatch|AccountOwnedByWrongProgram/);
       }
     });
   });
