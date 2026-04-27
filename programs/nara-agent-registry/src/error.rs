@@ -98,4 +98,10 @@ pub enum AgentRegistryError {
     AgentIdReserved,
     #[msg("Twitter binding is not in rejected status")]
     TwitterNotRejected,
+    #[msg("Agent index string is empty")]
+    AgentIndexEmpty,
+    #[msg("Agent index string too long")]
+    AgentIndexTooLong,
+    #[msg("Agent index does not belong to the given agent")]
+    AgentIndexMismatch,
 }

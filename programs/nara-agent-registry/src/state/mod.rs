@@ -1,4 +1,5 @@
 pub mod agent_bio;
+pub mod agent_index;
 pub mod agent_memory;
 pub mod agent_metadata;
 pub mod agent_state;
@@ -12,6 +13,7 @@ pub mod tweet_verify_queue;
 pub mod twitter_queue;
 
 pub use agent_bio::AgentBio;
+pub use agent_index::AgentIndex;
 pub use agent_memory::AgentMemory;
 pub use agent_metadata::AgentMetadata;
 pub use agent_state::AgentState;

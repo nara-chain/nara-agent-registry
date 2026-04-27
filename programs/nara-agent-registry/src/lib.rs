@@ -54,6 +54,14 @@ pub mod nara_agent_registry {
         instructions::register_agent::register_agent_with_referral(ctx, agent_id)
     }
 
+    pub fn register_agent_index(ctx: Context<RegisterAgentIndex>, index_str: String) -> Result<()> {
+        instructions::register_agent_index::register_agent_index(ctx, index_str)
+    }
+
+    pub fn unregister_agent_index(ctx: Context<UnregisterAgentIndex>, index_str: String) -> Result<()> {
+        instructions::unregister_agent_index::unregister_agent_index(ctx, index_str)
+    }
+
     pub fn transfer_authority(
         ctx: Context<TransferAuthority>,
         agent_id: String,

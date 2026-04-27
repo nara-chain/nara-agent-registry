@@ -15,3 +15,4 @@ pub const SEED_TWITTER_QUEUE: &[u8] = b"twitter_queue";
 pub const SEED_TWEET_VERIFY: &[u8] = b"tweet_verify";
 pub const SEED_TWEET_VERIFY_QUEUE: &[u8] = b"tweet_verify_queue";
 pub const SEED_TWEET_RECORD: &[u8] = b"tweet_record";
+pub const SEED_AGENT_INDEX: &[u8] = b"agent_index";

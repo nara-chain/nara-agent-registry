@@ -2524,6 +2524,139 @@ describe("nara-agent-registry", () => {
     });
   });
 
+  // ── Agent custom index ─────────────────────────────────────────────────
+  describe("agent_index", () => {
+    const AGENT_ID = "idx-agent-01";
+    const INDEX_STR = "my_alias";
+
+    const agentIndexPDA = (s: string): PublicKey =>
+      PublicKey.findProgramAddressSync(
+        [Buffer.from("agent_index"), Buffer.from(s)],
+        program.programId,
+      )[0];
+
+    before(async () => {
+      await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
+      await doRegisterAgent(AGENT_ID);
+      await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
+    });
+
+    it("register_agent_index: creates an AgentIndex PDA pointing to the agent", async () => {
+      const agentKey = agentPDA(AGENT_ID);
+      await program.methods
+        .registerAgentIndex(INDEX_STR)
+        .accounts({
+          agent: agentKey,
+        })
+        .rpc();
+
+      const idxAcc = await program.account.agentIndex.fetch(agentIndexPDA(INDEX_STR));
+      expect(idxAcc.agent.equals(agentKey)).to.be.true;
+      expect(idxAcc.createdAt.toNumber()).to.be.greaterThan(0);
+      const idLen = idxAcc.agentIdLen;
+      const id = Buffer.from(idxAcc.agentId.slice(0, idLen)).toString("utf-8");
+      expect(id).to.eq(AGENT_ID);
+    });
+
+    it("register_agent_index: rejects non-authority signer", async () => {
+      const other = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(other.publicKey, 1 * web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      try {
+        await program.methods
+          .registerAgentIndex("another_alias")
+          .accounts({
+            payer: other.publicKey,
+            authority: other.publicKey,
+            agent: agentPDA(AGENT_ID),
+          })
+          .signers([other])
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("Unauthorized");
+      }
+    });
+
+    it("register_agent_index: rejects empty index string", async () => {
+      try {
+        await program.methods
+          .registerAgentIndex("")
+          .accounts({ agent: agentPDA(AGENT_ID) })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.toString()).to.match(/AgentIndexEmpty|seeds constraint|Max seed length exceeded/);
+      }
+    });
+
+    it("register_agent_index: rejects duplicate index", async () => {
+      try {
+        await program.methods
+          .registerAgentIndex(INDEX_STR)
+          .accounts({ agent: agentPDA(AGENT_ID) })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.toString()).to.include("already in use");
+      }
+    });
+
+    it("unregister_agent_index: closes the AgentIndex PDA", async () => {
+      const agentKey = agentPDA(AGENT_ID);
+      const indexKey = agentIndexPDA(INDEX_STR);
+
+      const before = await provider.connection.getAccountInfo(indexKey);
+      expect(before).to.not.be.null;
+
+      await program.methods
+        .unregisterAgentIndex(INDEX_STR)
+        .accounts({
+          rentDestination: authority.publicKey,
+          agent: agentKey,
+        })
+        .rpc();
+
+      const after = await provider.connection.getAccountInfo(indexKey);
+      expect(after).to.be.null;
+    });
+
+    it("register_agent_index: same index can be re-registered after unregister", async () => {
+      const agentKey = agentPDA(AGENT_ID);
+      await program.methods
+        .registerAgentIndex(INDEX_STR)
+        .accounts({ agent: agentKey })
+        .rpc();
+
+      const idxAcc = await program.account.agentIndex.fetch(agentIndexPDA(INDEX_STR));
+      expect(idxAcc.agent.equals(agentKey)).to.be.true;
+    });
+
+    it("unregister_agent_index: rejects when called by another agent's authority", async () => {
+      // Register a second agent
+      await program.methods.updateRegisterFee(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0)).accounts({}).rpc();
+      await doRegisterAgent("idx-agent-02");
+      await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
+
+      // Try to unregister INDEX_STR (owned by AGENT_ID) using idx-agent-02
+      // Note: signer is still authority (same wallet), but agent account is different.
+      // The constraint agent_index.agent == agent.key() should fail.
+      try {
+        await program.methods
+          .unregisterAgentIndex(INDEX_STR)
+          .accounts({
+            rentDestination: authority.publicKey,
+            agent: agentPDA("idx-agent-02"),
+          })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.error?.errorCode?.code ?? e.message).to.include("AgentIndexMismatch");
+      }
+    });
+  });
+
   // ── Gas sponsorship (separate payer) ───────────────────────────────────
   describe("gas_sponsorship", () => {
     let sponsor: Keypair;
