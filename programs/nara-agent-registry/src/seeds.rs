@@ -16,4 +16,4 @@ pub const SEED_TWEET_VERIFY: &[u8] = b"tweet_verify";
 pub const SEED_TWEET_VERIFY_QUEUE: &[u8] = b"tweet_verify_queue";
 pub const SEED_TWEET_RECORD: &[u8] = b"tweet_record";
 pub const SEED_AGENT_INDEX: &[u8] = b"agent_index";
-pub const SEED_AGENT_ALIAS: &[u8] = b"agent_alias";
+pub const SEED_REVERSE_INDEX: &[u8] = b"reverse_index";

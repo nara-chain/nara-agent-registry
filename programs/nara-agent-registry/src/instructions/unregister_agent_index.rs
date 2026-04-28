@@ -1,10 +1,10 @@
 use anchor_lang::prelude::*;
-use crate::state::{AgentState, AgentIndex, AgentAlias};
+use crate::state::{AgentState, AgentIndex, ReverseIndex};
 use crate::error::AgentRegistryError;
 use crate::seeds::*;
 
 #[derive(Accounts)]
-#[instruction(index_str: String)]
+#[instruction(index_hash: [u8; 32])]
 pub struct UnregisterAgentIndex<'info> {
     /// CHECK: Receives rent refund (typically the original payer or authority)
     #[account(mut)]
@@ -17,7 +17,7 @@ pub struct UnregisterAgentIndex<'info> {
     #[account(
         mut,
         close = rent_destination,
-        seeds = [SEED_AGENT_INDEX, index_str.as_bytes()],
+        seeds = [SEED_AGENT_INDEX, &index_hash],
         bump,
         constraint = agent_index.load()?.agent == agent.key() @ AgentRegistryError::AgentIndexMismatch,
     )]
@@ -26,14 +26,14 @@ pub struct UnregisterAgentIndex<'info> {
     #[account(
         mut,
         close = rent_destination,
-        seeds = [SEED_AGENT_ALIAS, agent.key().as_ref(), index_str.as_bytes()],
+        seeds = [SEED_REVERSE_INDEX, agent.key().as_ref(), &index_hash],
         bump,
     )]
-    pub agent_alias: AccountLoader<'info, AgentAlias>,
+    pub reverse_index: AccountLoader<'info, ReverseIndex>,
     pub system_program: Program<'info, System>,
 }
 
-pub fn unregister_agent_index(_ctx: Context<UnregisterAgentIndex>, index_str: String) -> Result<()> {
-    msg!("unregister_agent_index: index={}", index_str);
+pub fn unregister_agent_index(_ctx: Context<UnregisterAgentIndex>, _index_hash: [u8; 32]) -> Result<()> {
+    msg!("unregister_agent_index");
     Ok(())
 }

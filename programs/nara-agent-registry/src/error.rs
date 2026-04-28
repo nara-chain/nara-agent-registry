@@ -104,4 +104,6 @@ pub enum AgentRegistryError {
     AgentIndexTooLong,
     #[msg("Agent index does not belong to the given agent")]
     AgentIndexMismatch,
+    #[msg("Agent index hash does not match the provided index string")]
+    AgentIndexHashMismatch,
 }

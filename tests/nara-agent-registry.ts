@@ -2529,15 +2529,18 @@ describe("nara-agent-registry", () => {
     const AGENT_ID = "idx-agent-01";
     const INDEX_STR = "my_alias";
 
+    const { blake3 } = require("@noble/hashes/blake3.js");
+    const hashIdx = (s: string): Uint8Array => blake3(new TextEncoder().encode(s));
+
     const agentIndexPDA = (s: string): PublicKey =>
       PublicKey.findProgramAddressSync(
-        [Buffer.from("agent_index"), Buffer.from(s)],
+        [Buffer.from("agent_index"), Buffer.from(hashIdx(s))],
         program.programId,
       )[0];
 
-    const agentAliasPDA = (agentKey: PublicKey, s: string): PublicKey =>
+    const reverseIndexPDA = (agentKey: PublicKey, s: string): PublicKey =>
       PublicKey.findProgramAddressSync(
-        [Buffer.from("agent_alias"), agentKey.toBuffer(), Buffer.from(s)],
+        [Buffer.from("reverse_index"), agentKey.toBuffer(), Buffer.from(hashIdx(s))],
         program.programId,
       )[0];
 
@@ -2550,7 +2553,7 @@ describe("nara-agent-registry", () => {
     it("register_agent_index: creates an AgentIndex PDA pointing to the agent", async () => {
       const agentKey = agentPDA(AGENT_ID);
       await program.methods
-        .registerAgentIndex(INDEX_STR)
+        .registerAgentIndex(INDEX_STR, Array.from(hashIdx(INDEX_STR)))
         .accounts({
           agent: agentKey,
         })
@@ -2564,11 +2567,11 @@ describe("nara-agent-registry", () => {
       expect(id).to.eq(AGENT_ID);
 
       // Reverse-lookup PDA also created
-      const aliasAcc = await program.account.agentAlias.fetch(agentAliasPDA(agentKey, INDEX_STR));
-      expect(aliasAcc.agent.equals(agentKey)).to.be.true;
-      const aliasLen = aliasAcc.indexLen;
-      const aliasStr = Buffer.from(aliasAcc.index.slice(0, aliasLen)).toString("utf-8");
-      expect(aliasStr).to.eq(INDEX_STR);
+      const revAcc = await program.account.reverseIndex.fetch(reverseIndexPDA(agentKey, INDEX_STR));
+      expect(revAcc.agent.equals(agentKey)).to.be.true;
+      const revLen = revAcc.indexLen;
+      const revStr = Buffer.from(revAcc.index.slice(0, revLen)).toString("utf-8");
+      expect(revStr).to.eq(INDEX_STR);
     });
 
     it("register_agent_index: rejects non-authority signer", async () => {
@@ -2578,7 +2581,7 @@ describe("nara-agent-registry", () => {
 
       try {
         await program.methods
-          .registerAgentIndex("another_alias")
+          .registerAgentIndex("another_alias", Array.from(hashIdx("another_alias")))
           .accounts({
             payer: other.publicKey,
             authority: other.publicKey,
@@ -2595,19 +2598,63 @@ describe("nara-agent-registry", () => {
     it("register_agent_index: rejects empty index string", async () => {
       try {
         await program.methods
-          .registerAgentIndex("")
+          .registerAgentIndex("", Array.from(hashIdx("")))
           .accounts({ agent: agentPDA(AGENT_ID) })
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
-        expect(e.toString()).to.match(/AgentIndexEmpty|seeds constraint|Max seed length exceeded/);
+        expect(e.toString()).to.match(/AgentIndexEmpty/);
+      }
+    });
+
+    it("register_agent_index: rejects mismatched index_hash", async () => {
+      try {
+        await program.methods
+          .registerAgentIndex("legit_index", Array.from(hashIdx("different_index")))
+          .accounts({ agent: agentPDA(AGENT_ID) })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.toString()).to.match(/AgentIndexHashMismatch|seeds constraint|ConstraintSeeds/);
+      }
+    });
+
+    it("register_agent_index: accepts index up to 128 bytes", async () => {
+      const long = "a".repeat(128);
+      const agentKey = agentPDA(AGENT_ID);
+      await program.methods
+        .registerAgentIndex(long, Array.from(hashIdx(long)))
+        .accounts({ agent: agentKey })
+        .rpc();
+      const revAcc = await program.account.reverseIndex.fetch(reverseIndexPDA(agentKey, long));
+      expect(revAcc.indexLen).to.eq(128);
+      const stored = Buffer.from(revAcc.index.slice(0, 128)).toString("utf-8");
+      expect(stored).to.eq(long);
+
+      // Cleanup
+      await program.methods
+        .unregisterAgentIndex(Array.from(hashIdx(long)))
+        .accounts({ rentDestination: authority.publicKey, agent: agentKey })
+        .rpc();
+    });
+
+    it("register_agent_index: rejects index longer than 128 bytes", async () => {
+      const tooLong = "a".repeat(129);
+      try {
+        await program.methods
+          .registerAgentIndex(tooLong, Array.from(hashIdx(tooLong)))
+          .accounts({ agent: agentPDA(AGENT_ID) })
+          .rpc();
+        expect.fail("expected error");
+      } catch (e: any) {
+        expect(e.toString()).to.match(/AgentIndexTooLong/);
       }
     });
 
     it("register_agent_index: rejects duplicate index", async () => {
       try {
         await program.methods
-          .registerAgentIndex(INDEX_STR)
+          .registerAgentIndex(INDEX_STR, Array.from(hashIdx(INDEX_STR)))
           .accounts({ agent: agentPDA(AGENT_ID) })
           .rpc();
         expect.fail("expected error");
@@ -2616,16 +2663,16 @@ describe("nara-agent-registry", () => {
       }
     });
 
-    it("unregister_agent_index: closes both AgentIndex and AgentAlias PDAs", async () => {
+    it("unregister_agent_index: closes both AgentIndex and ReverseIndex PDAs", async () => {
       const agentKey = agentPDA(AGENT_ID);
       const indexKey = agentIndexPDA(INDEX_STR);
-      const aliasKey = agentAliasPDA(agentKey, INDEX_STR);
+      const revKey = reverseIndexPDA(agentKey, INDEX_STR);
 
       expect(await provider.connection.getAccountInfo(indexKey)).to.not.be.null;
-      expect(await provider.connection.getAccountInfo(aliasKey)).to.not.be.null;
+      expect(await provider.connection.getAccountInfo(revKey)).to.not.be.null;
 
       await program.methods
-        .unregisterAgentIndex(INDEX_STR)
+        .unregisterAgentIndex(Array.from(hashIdx(INDEX_STR)))
         .accounts({
           rentDestination: authority.publicKey,
           agent: agentKey,
@@ -2633,13 +2680,13 @@ describe("nara-agent-registry", () => {
         .rpc();
 
       expect(await provider.connection.getAccountInfo(indexKey)).to.be.null;
-      expect(await provider.connection.getAccountInfo(aliasKey)).to.be.null;
+      expect(await provider.connection.getAccountInfo(revKey)).to.be.null;
     });
 
     it("register_agent_index: same index can be re-registered after unregister", async () => {
       const agentKey = agentPDA(AGENT_ID);
       await program.methods
-        .registerAgentIndex(INDEX_STR)
+        .registerAgentIndex(INDEX_STR, Array.from(hashIdx(INDEX_STR)))
         .accounts({ agent: agentKey })
         .rpc();
 
@@ -2647,39 +2694,38 @@ describe("nara-agent-registry", () => {
       expect(idxAcc.agent.equals(agentKey)).to.be.true;
     });
 
-    it("reverse lookup: getProgramAccounts by agent returns all aliases", async () => {
+    it("reverse lookup: getProgramAccounts by agent returns all index entries", async () => {
       const agentKey = agentPDA(AGENT_ID);
-      // Register two more aliases
+      // Register two more entries
       await program.methods
-        .registerAgentIndex("alias_a")
+        .registerAgentIndex("idx_a", Array.from(hashIdx("idx_a")))
         .accounts({ agent: agentKey })
         .rpc();
       await program.methods
-        .registerAgentIndex("alias_b")
+        .registerAgentIndex("idx_b", Array.from(hashIdx("idx_b")))
         .accounts({ agent: agentKey })
         .rpc();
 
-      // AgentAlias layout: 8 disc + 32 agent + ...
+      // ReverseIndex layout: 8 disc + 32 agent + ...
       // memcmp at offset 8 (== agent pubkey)
-      const accs = await program.account.agentAlias.all([
+      const accs = await program.account.reverseIndex.all([
         { memcmp: { offset: 8, bytes: agentKey.toBase58() } },
       ]);
       const indexes = accs.map(a => {
         const len = (a.account as any).indexLen;
         return Buffer.from((a.account as any).index.slice(0, len)).toString("utf-8");
       }).sort();
-      // INDEX_STR was unregistered earlier; only alias_a + alias_b + (the freshly re-registered INDEX_STR) remain
-      expect(indexes).to.include("alias_a");
-      expect(indexes).to.include("alias_b");
+      expect(indexes).to.include("idx_a");
+      expect(indexes).to.include("idx_b");
       expect(indexes).to.include(INDEX_STR);
 
       // Cleanup
       await program.methods
-        .unregisterAgentIndex("alias_a")
+        .unregisterAgentIndex(Array.from(hashIdx("idx_a")))
         .accounts({ rentDestination: authority.publicKey, agent: agentKey })
         .rpc();
       await program.methods
-        .unregisterAgentIndex("alias_b")
+        .unregisterAgentIndex(Array.from(hashIdx("idx_b")))
         .accounts({ rentDestination: authority.publicKey, agent: agentKey })
         .rpc();
     });
@@ -2691,11 +2737,9 @@ describe("nara-agent-registry", () => {
       await program.methods.updateRegisterFee(ONE_SOL, ONE_SOL, ONE_SOL, ONE_SOL).accounts({}).rpc();
 
       // Try to unregister INDEX_STR (owned by AGENT_ID) using idx-agent-02
-      // Note: signer is still authority (same wallet), but agent account is different.
-      // The constraint agent_index.agent == agent.key() should fail.
       try {
         await program.methods
-          .unregisterAgentIndex(INDEX_STR)
+          .unregisterAgentIndex(Array.from(hashIdx(INDEX_STR)))
           .accounts({
             rentDestination: authority.publicKey,
             agent: agentPDA("idx-agent-02"),
@@ -2703,8 +2747,8 @@ describe("nara-agent-registry", () => {
           .rpc();
         expect.fail("expected error");
       } catch (e: any) {
-        // alias PDA seed embeds agent.key(), so wrong agent yields AccountOwnedByWrongProgram
-        // (the alias PDA for the wrong agent doesn't exist) before AgentIndexMismatch fires
+        // reverse_index PDA seed embeds agent.key(), so wrong agent yields AccountOwnedByWrongProgram
+        // (the reverse_index PDA for the wrong agent doesn't exist) before AgentIndexMismatch fires
         expect(e.error?.errorCode?.code ?? e.message)
           .to.match(/AgentIndexMismatch|AccountOwnedByWrongProgram/);
       }
